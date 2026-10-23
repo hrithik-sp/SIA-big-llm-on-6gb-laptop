@@ -93,7 +93,7 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
 </table>
 
 The full story, including the wrong turns and how each was caught, is in
-**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 35 problems with how
+**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 39 problems with how
 each was solved.
 
 ## Sprout
@@ -108,8 +108,12 @@ A one-click desktop app built on these results:
 - **Light:** it starts hidden, uses 177 MB without a model, opens in ~0.1 s with
   `Ctrl+Alt+Space`, and frees the model after 10 idle minutes.
 - **Knows your laptop:** the time, where you are, battery health, screen, sound, Bluetooth,
-  files and apps, read-only, with a permission card for every call and secret locations
-  blocked.
+  files, apps, open windows and games.
+- **Runs your laptop:** opens apps, files and websites; sets volume, brightness, Bluetooth,
+  Wi-Fi and theme; controls music and windows; locks, sleeps or shuts down; takes screenshots;
+  sets reminders.
+- **Secure by design:** a permission card for every action, fixed checked actions with no
+  scripts or shells, nothing deleted, and secret locations blocked.
 
 → **[Sprout guide: features, install, security model](docs/SPROUT.md)**
 
@@ -121,12 +125,12 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (57 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (58 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
 | `app/` | Sprout (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 68 unit tests |
+| `tests/` | 72 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -134,7 +138,7 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 68 tests, no GPU or models needed
+python -m unittest discover tests          # 72 tests, no GPU or models needed
 ```
 
 - **Run Sprout:** build llama.cpp, download the five model files, run `app\install.ps1`.
@@ -158,9 +162,8 @@ Open items (light models for heavy multitasking, a large MoE-cache test) are lis
 Sprout's goal is a smart, human-feeling assistant that knows this laptop and, step by step, can
 run it. Next, in order:
 
-1. **Act on the laptop, with approval.** Open a file, folder or app; set volume or brightness;
-   take a screenshot; close a frozen app. Every action shows a card first (like the read tools
-   today), and nothing is deleted or sent.
+1. ~~**Act on the laptop, with approval.**~~ Done (v1.2.0): open, control, windows, power,
+   screenshots, clipboard, notes and reminders, each approved on a card.
 2. **Optimise the laptop on request.** Find what slows it down (startup apps, memory hogs, full
    disks, battery wear), explain it plainly, and, with approval, apply the fix.
 3. **A faster first reply.** Keep the model ready longer when memory allows, or prefetch it from

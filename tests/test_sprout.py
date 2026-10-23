@@ -285,6 +285,77 @@ class SettingsAndTools(unittest.TestCase):
                         server.N_CTX - body["max_tokens"])
         self.assertIn("note 39", msgs[-3]["content"])  # the most recent history survives, the oldest goes
 
+    def test_actions_refuse_unsafe_requests(self):
+        """Only refusal paths run here: nothing on the laptop changes."""
+        import tempfile
+        a = server.tools.actions
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("setup.exe", "run.ps1", "x.bat", "y.vbs", "evil.lnk", "tool.py", "fix.reg", "pkg.msi"):
+                server.Path(d, name).write_text("x")
+                self.assertIn("error", a.open_file(str(server.Path(d, name))), name)
+        for shell in ("cmd", "powershell", "terminal"):
+            self.assertIn("error", a.open_app(shell))
+        for url in ("file:///C:/Windows", "javascript:alert(1)", "ms-settings:display", "C:\\x.html"):
+            self.assertIn("error", a.open_website(url))
+        self.assertIn("error", a.open_settings("registry editor"))
+        self.assertIn("error", a.control("volume", "loud"))
+        self.assertIn("error", a.control("brightness", "-5; rm"))
+        self.assertIn("error", a.control("firewall", "off"))
+        self.assertIn("error", a.window("close", "sprout"))
+        self.assertIn("error", a.power("format"))
+        self.assertTrue(a.is_dangerous("power", {"mode": "shutdown"}))
+        self.assertFalse(a.is_dangerous("power", {"mode": "lock"}))
+        self.assertFalse(a.is_dangerous("control", {"setting": "volume", "value": "30"}))
+
+    def test_notes_never_overwrite_and_reminders_parse_times(self):
+        import tempfile
+        a = server.tools.actions
+        orig = server.tools.user_folders
+        with tempfile.TemporaryDirectory() as d:
+            server.tools.user_folders = lambda: {"documents": d, "pictures": d, "home": d}
+            try:
+                one = a.save_note("plan.md", "first")
+                two = a.save_note("plan.md", "second")
+                bad = a.save_note("../../evil.exe", "x")
+            finally:
+                server.tools.user_folders = orig
+            self.assertNotEqual(one["saved"], two["saved"])
+            self.assertEqual(server.Path(one["saved"]).read_text(encoding="utf-8"), "first")
+            self.assertTrue(bad["saved"].startswith(str(server.Path(d, "Sprout"))) and bad["saved"].endswith(".txt"))
+        r = a.set_reminder("stand up", at="5:30 pm")
+        self.assertIn("5:30 PM", r["at"])
+        self.assertIn("error", a.set_reminder("x", at="25:99"))
+        rid = a.list_reminders()["reminders"][-1]["id"]
+        self.assertEqual(a.cancel_reminder(rid)["cancelled"], "stand up")
+
+    def test_commands_must_go_through_a_tool(self):
+        """The model once said 'Bluetooth is now off' without calling anything: commands force a tool call."""
+        for cmd in ("turn bluetooth off", "ok now turn bluetooth off again", "set the volume to 35", "mute it",
+                    "close notepad", "open my downloads folder", "take a screenshot", "remind me in 2 minutes",
+                    "please lock my screen", "can you open spotify", "restart my laptop", "pause the music"):
+            self.assertTrue(server.wants_action(cmd), cmd)
+            body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": cmd}]})
+            self.assertEqual(body.get("tool_choice"), "required", cmd)
+        for q in ("how do I turn off bluetooth?", "is my bluetooth on?", "make me a study plan", "find my resume",
+                  "what time is it", "explain how TCP works", "write an email to my prof", "I opened the file"):
+            self.assertFalse(server.wants_action(q), q)
+
+    def test_actions_switch_and_cards(self):
+        server.save_settings({**server.DEFAULT_SETTINGS, "laptop_actions": False})
+        body, _, _ = server.build_request({"mode": "chat", "messages": self.msgs})
+        names = {t["function"]["name"] for t in body["tools"]}
+        self.assertNotIn("open", names)
+        self.assertIn("read_file", names)  # reading still works with actions off
+        server.save_settings(dict(server.DEFAULT_SETTINGS))
+        body, _, _ = server.build_request({"mode": "chat", "messages": self.msgs})
+        self.assertTrue({"open", "control", "window", "power", "screenshot", "copy", "save_note",
+                         "reminder"} <= {t["function"]["name"] for t in body["tools"]})
+        d = server.tools.describe
+        self.assertEqual(d("control", '{"setting": "volume", "value": "30"}'), "Set volume to 30%")
+        self.assertEqual(d("power", '{"mode": "shutdown"}'), "Shut down the laptop in 60 seconds")
+        view = server.settings_view()
+        self.assertTrue(any(t["action"] for t in view["tools"]) and all(t["reads"] for t in view["tools"]))
+
     def test_find_files_takes_spelling_variants(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:

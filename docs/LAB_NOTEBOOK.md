@@ -1337,6 +1337,55 @@ Goal: Sprout separate from Edge, quick and smooth.
       | After the user typed "ok", the model submitted the guess "GUESS" for them, costing a turn | The referee only accepts a guess that appears in the user's newest message |
       | A question in Devanagari got an English reply | A message in a non-Latin script gets an explicit "reply in the same language and script" |
 
+58. **Sprout acts on the laptop, with security; tested with real requests against the laptop's real state.**
+    - **Why:** asked "is my Bluetooth on?", Sprout said yes while it was off. The tool reported the installed
+      adapter, not the radio. Bluetooth and Wi-Fi radio states now come from Windows' Radios API (verified
+      against the owner's screen).
+    - **Actions, as 8 grouped tools.** Few tools keep the prompt small (each description is read every time)
+      and make choices clear:
+
+      | Tool | Covers |
+      |---|---|
+      | `open` | apps from the Start menu (344 here), documents and folders, http(s) websites, Settings pages |
+      | `control` | volume, mute, brightness, Bluetooth, Wi-Fi, dark/light theme, media play/pause/next/previous |
+      | `window` | bring to front, minimise, maximise, close (like clicking X) |
+      | `power` | lock; sleep, restart and shutdown (the last two wait 60 s and can be cancelled) |
+      | `screenshot`, `copy`, `save_note`, `reminder` | screenshot to Pictures, text to the clipboard, a new note in Documents\Sprout, reminders as Windows notifications |
+    - **Security:**
+      - every action shows an approval card stating exactly what will happen ("Set volume to 30%");
+      - sleep, restart and shutdown are asked every time and can never be "always allowed";
+      - no free-form commands: fixed functions with validated arguments, passed to PowerShell as
+        parameters, never as code;
+      - never deletes, moves or overwrites files, installs software, runs programs or scripts from files
+        (`.exe`, `.ps1`, `.bat`, `.lnk` and similar are refused), opens command shells or force-kills apps;
+      - a separate Settings switch ("Let Sprout act on this laptop"), and every action is logged.
+    - **A forced tool call for commands:** the model once answered "Bluetooth is now off" without calling
+      anything, echoing its previous reply. Commands ("turn bluetooth off", "ok now set the volume to 40")
+      now require a tool call; questions ("how do I turn off Bluetooth?") don't. Checked on 30 phrasings.
+    - **Reading added:** window titles ("what's open in VS Code"), installed games (Steam, Epic, Xbox, known
+      publishers), and Sprout's own processes labelled as itself in memory reports.
+    - **Live test** (`tools/sprout_actions_check.py --visible`): 32 checks with the real model, each verified
+      against the laptop's real state (Windows audio, brightness, radios, theme, windows, files, clipboard),
+      covering volume and relative "a bit louder", mute, brightness and "dim a little", Bluetooth on and off,
+      theme, opening and closing Notepad, Calculator, a folder, a file and a Settings page, minimise and focus,
+      "what's open", screenshot, clipboard, a note, a reminder set and cancelled, and security (a restart
+      request asked every time and denied, refusals to delete, run installers or open PowerShell, and an
+      instruction hidden in a file ignored).
+      - Results: 20/22 → 21/22 → 30/32 (round 2 added) → **32/32**.
+      - Fixed along the way: the false "Bluetooth is now off"; File Explorer and Store-app windows (Calculator,
+        Settings) hidden from the window list; closing matched only part of a title; open_app now reports
+        whether the app's window actually appeared.
+    - **A restore that wasn't complete.** The live test switches the theme and back. The setting was
+      restored, but the taskbar stayed white: Windows needs a second redraw message
+      ("WindowsThemeElement"). The owner noticed. Everything was then checked and restored:
+      - theme (verified on screen: the taskbar measures RGB 49, 51, 53);
+      - volume, brightness, radios and the clipboard;
+      - a Notepad tab of the test file that Notepad had remembered (removed, with a backup);
+      - test-only files removed.
+
+      Since then the theme action sends both messages. The live test only runs with `--visible` and the
+      owner's OK, and restores with verification and retries.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
@@ -1431,9 +1480,10 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
 | `tools/build_llama.ps1` | CUDA sm_86 + AVX-512 (VNNI/VBMI) build; parallel jobs sized to free RAM |
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
-| `tests/` | 68 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
+| `tests/` | 72 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
 | `tools/sprout_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
+| `tools/sprout_actions_check.py` | Laptop actions with the real model, verified against the real state and restored; run only with `--visible` and the owner's OK (finding 58) |
 | `tools/sprout_daily_check.py` | 33 daily-use requests across Chat, Study, Code and Write, laptop lookups, limits and games (finding 57) |
 | `tools/sprout_tools_check.py`, `tools/sprout_window_check.py`, `tools/sprout_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
 | `tools/hash_models.py` | SHA-256 of every model file, compared with Hugging Face's published hash at the pinned revision → `results/model_files.json` |
@@ -1491,7 +1541,7 @@ git apply <this repo>\patches\llama-bench-moe-cache-mib.patch       # llama-benc
 git apply <this repo>\patches\llama-perplexity-parse-special.patch  # chat-corpus KLD (finding 30)
 cd <this repo>
 powershell -ExecutionPolicy Bypass -File tools\build_llama.ps1       # CUDA sm_86, AVX-512 VNNI/VBMI, BF16 off
-python -m unittest discover tests                                    # 68 tests
+python -m unittest discover tests                                    # 72 tests
 ```
 
 **3. Models and data.** `fetch_model.ps1` checks every file against the SHA-256 that

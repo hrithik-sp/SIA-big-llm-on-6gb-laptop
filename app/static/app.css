@@ -275,3 +275,6 @@ body.working .home-mark { filter: drop-shadow(0 0 10px rgba(34, 211, 238, .35));
 @media (max-width: 1050px) { #vitals { display: none; } }
 .field { width: 100%; border: 1px solid var(--line-2); background: var(--bg); border-radius: 9px; padding: 7px 10px; font-size: 13.5px; outline: 0; }
 .field:focus { border-color: rgba(124, 135, 255, .6); }
+
+/* action cards: a quiet accent so changes stand apart from reads */
+.tool-card.action { border-color: color-mix(in oklab, var(--accent, #7c83ff) 45%, transparent); }

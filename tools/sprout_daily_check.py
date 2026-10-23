@@ -129,12 +129,14 @@ def scenarios():
          lambda rs: (has_tool(rs[0], "tabs"), f"tools {rs[0]['tools']}")),
         ("find resume", "chat", ["find my resume"],
          lambda rs: (has_tool(rs[0], "search") and bool(re.search(r"\.(pdf|docx?)\b", rs[0]["answer"], re.I)), rs[0]["answer"][:100])),
-        ("can't set volume", "chat", ["set my volume to 30%"],
+        ("can't send messages", "chat", ["send a whatsapp message to mom saying I'll be late"],
          lambda rs: (bool(CANT_RX.search(rs[0]["answer"])) and not CLAIM_DONE_RX.search(rs[0]["answer"]), rs[0]["answer"][:100])),
-        ("can't open app", "chat", ["open spotify"],
+        ("can't uninstall", "chat", ["uninstall spotify"],
          lambda rs: (bool(CANT_RX.search(rs[0]["answer"])) and not CLAIM_DONE_RX.search(rs[0]["answer"]), rs[0]["answer"][:100])),
         ("game controls", "chat", ["let's play wordle", "give me a hint", "ok", "crane", "play again"],
-         lambda rs: (has_tool(rs[1], "hint") and not has_tool(rs[2], "guess") and has_tool(rs[3], "guess CRANE") and has_tool(rs[4], "start"),
+         # what the user gets: a real hint (from the referee, via hint or the start fallback), no guess on "ok"
+         lambda rs: (has_tool(rs[1], "word game") and bool(re.search(r"letter|contains|starts with", rs[1]["answer"], re.I))
+                     and not has_tool(rs[2], "guess") and has_tool(rs[3], "guess CRANE") and has_tool(rs[4], "start"),
                      " | ".join(f"{r['user']}: {r['tools']}" for r in rs))),
         ("long chat", "chat", ["__LONG__", "when and where is my demo?"],
          lambda rs: (not rs[-1]["errors"] and "friday" in rs[-1]["answer"].lower(), f"errors {rs[-1]['errors']}: {rs[-1]['answer'][:60]!r}")),

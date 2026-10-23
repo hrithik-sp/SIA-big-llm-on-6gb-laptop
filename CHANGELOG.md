@@ -1,6 +1,32 @@
 # Changelog
 
-## v1.2.0 (prepared, not yet released): tested on everyday use
+## v1.2.0 (prepared, not yet released): Sprout acts on your laptop
+
+### New: Sprout runs your laptop, with your approval
+- **Open** apps by name (anything in the Start menu), documents, folders, websites and Settings pages.
+- **Control** volume and mute, brightness, Bluetooth, Wi-Fi, dark/light theme, and music or video.
+  "Make it a bit louder" and "dim the screen a little" work too.
+- **Windows:** bring to front, minimise, maximise, close.
+- **Power:** lock; sleep, restart and shutdown (asked every time; restart and shutdown wait 60 s and
+  can be cancelled).
+- **Screenshots, clipboard, notes, reminders** (reminders pop up as Windows notifications).
+- **Security:**
+  - an approval card for every action, saying exactly what will happen;
+  - fixed, checked actions, with no scripts, shells or programs run from files;
+  - nothing deleted or overwritten;
+  - a separate Settings switch, and a log of every action.
+- **Tested like a user:** 32 real requests, each verified against the laptop's real state and then
+  restored (32/32).
+
+### Fixed
+- **Bluetooth status was wrong:** it reported "on" whenever an adapter existed. It now reads the radio
+  itself.
+- **Announced actions without doing them** ("Bluetooth is now off" with no action). Commands now always
+  go through a tool.
+- **Reads more:** what's open in each window (e.g. the file in VS Code), installed games, and Sprout's
+  own memory use labelled as Sprout.
+
+### Tested on everyday use
 
 A wider test of 33 everyday requests found eleven more problems, and all are fixed. The final full
 run passed 32 of 33; its one failure (a game guess the model made up) was then fixed and re-tested.
@@ -25,7 +51,8 @@ run passed 32 of 33; its one failure (a game guess the model made up) was then f
 - **Replies in your script:** a question in Hindi (Devanagari) gets a Hindi answer.
 
 ### Checks
-- New: `tools/sprout_daily_check.py` (33 requests). 68 unit tests. Lab notebook finding 57.
+- New: `tools/sprout_daily_check.py` (33 requests), `tools/sprout_actions_check.py` (32 actions, run with
+  `--visible`). 72 unit tests. Lab notebook findings 57–58.
 
 ## v1.1.0: Sprout knows your laptop, and works for you
 

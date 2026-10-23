@@ -36,13 +36,26 @@ from a fresh test profile; the worked example was checked by hand).*
 **It knows the time.** Every request carries the laptop's current date, time, time zone and
 region, so "what time is it?" is answered from the clock, never guessed.
 
-**Read-only laptop access, with permission.** When you ask about your laptop, the model can
+**Reading the laptop, with permission.** When you ask about your laptop, the model can
 call read-only tools: location (Windows location, named offline), device details (battery
 health, display and brightness, volume, Bluetooth, USB, printers, startup apps, internet
 connection, laptop model), system vitals and info, open browser tabs, running apps and processes,
 installed apps, clipboard text, recent and recently opened files, and listing, searching and reading files
 (text, PDF, Word). Every call shows a card with the exact path: **Allow once**, **Always
 allow** or **Deny**.
+
+**Acting on the laptop, with permission.** Sprout can also do things:
+- **Open:** apps (by name, from the Start menu), documents, folders, websites and Settings pages.
+- **Control:** volume and mute, brightness, Bluetooth and Wi-Fi, dark or light theme, and music or
+  video playback.
+- **Windows:** bring to front, minimise, maximise, close (like clicking X).
+- **Power:** lock, sleep, restart or shut down. Restart and shutdown wait 60 seconds and can be
+  cancelled; sleep, restart and shutdown are confirmed every time.
+- **Other:** take a screenshot, copy text to the clipboard, save a note, and set reminders that pop up
+  as Windows notifications.
+
+Each action shows a card saying exactly what will happen ("Set volume to 30%"). Turn actions off in
+Settings ("Let Sprout act on this laptop") and Sprout goes back to reading only.
 
 ## How it stays light
 
@@ -98,6 +111,14 @@ review. Its protections:
   data and `.env` files (unit-tested).
 - **Untrusted file contents:** the model is told to treat file contents as data, not
   instructions.
+- **Actions are fixed and checked:**
+  - each action is a specific function with validated inputs; there is no free-form command, script or
+    shell, and command shells can't be opened;
+  - "open" runs only Start-menu apps and documents (programs and scripts such as `.exe`, `.ps1`, `.bat`
+    or `.lnk` are refused);
+  - Sprout never deletes, moves or overwrites files, installs software or force-kills apps;
+  - new notes go only into Documents\Sprout;
+  - every action is written to `app-data/logs/actions.log`.
 - **No guessing:** the model is told never to state a laptop fact (time, place, hardware,
   settings, files) that isn't in a tool result; it calls the tool or says it can't see it.
 - **Location** comes from Windows' own location service, and only when that is turned on
@@ -146,10 +167,11 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 68 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 72 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |
+| `python tools\sprout_actions_check.py --visible` | Laptop actions with the real model, verified against the real state and restored afterwards (32/32, finding 58). It visibly changes the laptop for a few minutes, so it needs `--visible` |
 | `python tools\sprout_daily_check.py` | 33 daily-use requests: memory, languages, maths, laptop lookups, actions it can't take, a very long chat, games, Study, Code and Write (finding 57) |
 | `python tools\sprout_behaviour_check.py` | Chat behaviour in eight scripted conversations: persona, time and place, file search, games, a reasoning sum (8/8, finding 56) |
 | `python tools\sprout_window_check.py` | The standalone window: hidden start, ~0.1 s show, close-to-hide, single instance, memory and a clean quit (9/9, finding 52) |

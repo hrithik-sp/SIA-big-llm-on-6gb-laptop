@@ -126,6 +126,8 @@ async function saveSettings(upd) { S.settings = await post("/api/settings", upd)
 function renderSettings() {
   const st = S.settings; if (!st) return;
   $("#set-laptop").checked = !!st.laptop_access;
+  $("#set-actions").checked = !!st.laptop_actions;
+  $("#set-actions").disabled = !st.laptop_access;
   if (document.activeElement !== $("#set-name")) $("#set-name").value = st.user_name || "";
   const al = $("#set-allowed"); al.innerHTML = "";
   for (const id of st.always_allow) {
@@ -491,7 +493,10 @@ function stop() { if (S.abort) S.abort.abort(); }
 function askPermission(v, ev) {
   const card = el("div", "tool-card");
   const h = el("div", "tc-h"); h.append(icon("i-laptop"), el("span", null, `Sprout wants to: ${ev.label}`));
-  const r = el("div", "tc-r", `Reads ${ev.reads}. Read-only: nothing on your laptop is changed.`);
+  const r = el("div", "tc-r", ev.action
+    ? `This changes your laptop: it ${ev.does}.${ev.danger ? " You'll be asked every time for this one." : ""}`
+    : `Reads ${ev.reads}. Read-only: nothing on your laptop is changed.`);
+  if (ev.action) card.classList.add("action");
   const b = el("div", "tc-b");
   const decide = async (decision) => {
     $$("button", b).forEach((x) => (x.disabled = true));
@@ -502,13 +507,13 @@ function askPermission(v, ev) {
   const once = el("button", "yes", "Allow once"); once.onclick = () => decide("once");
   const always = el("button", null, "Always allow"); always.onclick = () => decide("always");
   const deny = el("button", null, "Deny"); deny.onclick = () => decide("deny");
-  b.append(once, always, deny);
+  if (ev.danger) b.append(once, deny); else b.append(once, always, deny);
   card.append(h, r, b);
   v.answer.before(card); scrollDown(true); once.focus();
 }
 function toolNote(v, ev) {
   const ok = ev.status === "done";
-  const text = ok ? ev.label : ev.status === "denied" ? `Declined: ${ev.label}` : ev.status === "off" ? "Laptop access is off (Settings)" : `Couldn't: ${ev.label}`;
+  const text = ok ? ev.label : ev.status === "denied" ? `Declined: ${ev.label}` : ev.status === "off" ? "Laptop access is off (Settings)" : ev.status === "actions_off" ? "Actions are off (Settings)" : `Couldn't: ${ev.label}`;
   const n = el("div", "tool-note " + (ok ? "ok" : "no")); n.append(icon(ok ? "i-check" : "i-x"), el("span", null, text));
   v.answer.before(n);
 }
@@ -551,6 +556,7 @@ function wire() {
   $("#mode-btn").onclick = (e) => { e.stopPropagation(); openPopover($("#menu-mode"), $("#mode-btn")); };
   $("#open-settings").onclick = (e) => { e.stopPropagation(); loadSettings(); openPopover($("#panel-settings"), $("#open-settings")); };
   $("#set-laptop").onchange = (e) => saveSettings({ laptop_access: e.target.checked });
+  $("#set-actions").onchange = (e) => saveSettings({ laptop_actions: e.target.checked });
   $("#set-name").onchange = (e) => saveSettings({ user_name: e.target.value });
   $("#status-pill").onclick = (e) => { e.stopPropagation(); pollStatus(); openPopover($("#panel-status"), $("#status-pill"), { above: false }); };
   $("#menu-plus").onclick = (e) => {

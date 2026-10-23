@@ -303,6 +303,11 @@ The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I foun
 - **A wider daily-use test found ten more problems** (finding 57). The worst: claiming searches it
   never ran, a guess submitted on the user's behalf, and long chats failing outright. All were fixed and re-tested: the final full run
   passed 32 of 33 everyday requests, and its one failure (a made-up game guess) was then fixed.
+- **From reading to acting** (finding 58). I gave Sprout eight grouped action tools (open,
+  control, window, power, screenshot, copy, save_note, reminder):
+  - each action is approved on a card, and dangerous ones are asked every time;
+  - nothing can be deleted, installed or run from a file;
+  - a live test verifies each action against the laptop's real state and restores it: 32/32.
 - **The live clock first broke prompt caching** (one line that changed every minute, at the top
   of the prompt): replies in a real chat took 12–16 s. With the clock moved to the newest message,
   a six-turn test re-processes only the new message and shows the first word in 2–3 s
@@ -519,6 +524,10 @@ Full commands: lab notebook, "Recommended settings".
 | 33 | Sprout claimed searches and checks it never ran | "I checked your recent files" with no tool call | Honesty rules plus a reminder on the newest message: 0 of 15 invented afterwards | 57 |
 | 34 | Long chats were rejected beyond 16,384 tokens | "request (37,287 tokens) exceeds the available context size" | Oldest messages left out in blocks; exact-count retry; a clear message when one message is too long | 57 |
 | 35 | The model couldn't see a running game | Restarted the game on the first guess | Game state on the newest message; "start" keeps a running game | 57 |
+| 36 | "Is my Bluetooth on?" answered yes while it was off | The tool reported the adapter, not the radio | Radio state from Windows' Radios API | 58 |
+| 37 | An action announced but never taken | "Bluetooth is now off" with no tool call | Commands force a tool call; questions don't | 58 |
+| 38 | Store-app and folder windows invisible to Sprout | Calculator, Settings and Downloads "not found" | Window list includes them, matched by title | 58 |
+| 39 | A test's theme change left the taskbar white | Setting restored, taskbar not redrawn | Both redraw messages sent; visible tests only with the owner's OK; restore verified on screen | 58 |
 
 ---
 
@@ -542,7 +551,7 @@ Full commands: lab notebook, "Recommended settings".
 ## 7. Future work
 
 - **Sprout, toward an assistant that runs the laptop** (README "Roadmap"):
-  - actions with approval (open, set, close);
+  - actions with approval: done (finding 58);
   - on-request optimisation (startup apps, memory hogs, disk, battery wear);
   - a faster first reply;
   - local memory the owner controls;

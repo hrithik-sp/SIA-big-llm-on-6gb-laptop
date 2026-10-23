@@ -33,6 +33,7 @@ from pathlib import Path
 
 import psutil
 
+import actions
 import games
 
 APP = Path(__file__).resolve().parent
@@ -121,13 +122,22 @@ def _gpu():
 
 
 # --------------------------------------------------------------------------- tools
+SPROUT = "Sprout (this assistant and its AI model)"
+
+
 def system_vitals():
     vm, batt = psutil.virtual_memory(), psutil.sensors_battery()
     disk = psutil.disk_usage("C:\\")
+    try:  # Sprout itself (this backend, its window and its model servers): grouped, not called a hog
+        me = psutil.Process(os.getpid())
+        own = {me.pid} | {c.pid for c in me.children(recursive=True)}
+    except psutil.Error:
+        own = set()
     procs = []
     for p in psutil.process_iter(["name", "memory_info"]):
         try:
-            procs.append((p.info["memory_info"].rss, p.info["name"]))
+            name = SPROUT if p.pid in own else p.info["name"]
+            procs.append((p.info["memory_info"].rss, name))
         except (psutil.Error, AttributeError):
             continue
     by_app = {}
@@ -144,6 +154,8 @@ def system_vitals():
         "disk_c": {"free_gb": round(disk.free / GiB, 1), "total_gb": round(disk.total / GiB, 1)},
         "uptime_hours": round((time.time() - psutil.boot_time()) / 3600, 1),
         "top_apps_by_memory": [{"app": n, "gb": round(b / GiB, 2)} for n, b in top],
+        "note": f"'{SPROUT}' is this assistant and its model: expected, so don't suggest closing it; "
+                "mapped model files count partly as cache that Windows frees when other apps need it.",
     }
 
 
@@ -200,29 +212,40 @@ def recent_files(folder="downloads", days=1, limit=25):
     }
 
 
-def running_apps():
-    """Apps with a visible window right now (names only)."""
-    titles = set()
+def running_apps(include_titles=False):
+    """Apps with a visible window right now; with include_titles, each window's title (which shows
+    e.g. the file open in an editor or the page in a browser)."""
+    names, windows = set(), []
     if os.name == "nt":
         u32 = ctypes.windll.user32
-        pids = {}
 
         @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         def cb(hwnd, _):
-            if u32.IsWindowVisible(hwnd) and u32.GetWindowTextLengthW(hwnd):
+            n = u32.GetWindowTextLengthW(hwnd)
+            if u32.IsWindowVisible(hwnd) and n:
                 pid = wintypes.DWORD()
                 u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                pids[pid.value] = True
+                try:
+                    name = psutil.Process(pid.value).name().removesuffix(".exe")
+                except psutil.Error:
+                    return True
+                buf = ctypes.create_unicode_buffer(n + 1)
+                u32.GetWindowTextW(hwnd, buf, n + 1)
+                if name.lower() == "explorer" and buf.value != "Program Manager":
+                    name = "File Explorer"  # a folder window (the shell itself is "Program Manager")
+                elif name.lower() == "applicationframehost":
+                    name = buf.value  # Store apps (Calculator, Settings) live in this host: use their title
+                names.add(name)
+                windows.append({"app": name, "title": buf.value[:200]})
             return True
         u32.EnumWindows(cb, 0)
-        for pid in pids:
-            try:
-                titles.add(psutil.Process(pid).name().removesuffix(".exe"))
-            except psutil.Error:
-                continue
-    skip = {"explorer", "TextInputHost", "ApplicationFrameHost", "SystemSettings", "ShellExperienceHost"}
-    apps = sorted(t for t in titles if t not in skip)
-    return {"count": len(apps), "apps": apps}
+    skip = {"explorer", "TextInputHost", "ApplicationFrameHost", "SystemSettings", "ShellExperienceHost",
+            "Program Manager"}
+    apps = sorted(t for t in names if t not in skip)
+    out = {"count": len(apps), "apps": apps}
+    if include_titles:
+        out["windows"] = [w for w in windows if w["app"] not in skip and w["title"] not in ("Program Manager",)]
+    return out
 
 
 def list_folder(path, limit=100):
@@ -470,7 +493,58 @@ def _displays():
     return out
 
 
-DEVICE_CATEGORIES = ("battery", "display", "audio", "bluetooth", "usb", "printers", "startup", "internet", "model")
+DEVICE_CATEGORIES = ("battery", "display", "audio", "bluetooth", "usb", "printers", "startup", "internet", "model",
+                     "games")
+GAME_PUBLISHERS = re.compile(r"riot games|electronic arts|ubisoft|rockstar|activision|blizzard|hoyoverse|mihoyo|"
+                             r"bandai namco|square enix|capcom|sega|bethesda|2k|cd projekt|krafton|epic games inc",
+                             re.I)
+
+
+def installed_games():
+    """Games from Steam, Epic and Xbox libraries, plus programs by known game publishers."""
+    out = {"steam": [], "epic": [], "xbox": [], "other": []}
+    steam = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Steam"
+    libs = {steam}
+    try:
+        vdf = (steam / "config" / "libraryfolders.vdf").read_text(encoding="utf-8", errors="replace")
+        libs |= {Path(p.replace("\\\\", "\\")) for p in re.findall(r'"path"\s+"([^"]+)"', vdf)}
+    except OSError:
+        pass
+    for lib in libs:
+        for acf in (lib / "steamapps").glob("appmanifest_*.acf"):
+            m = re.search(r'"name"\s+"([^"]+)"', acf.read_text(encoding="utf-8", errors="replace"))
+            if m and not re.search(r"redistributable|proton|steam linux runtime|steamvr", m.group(1), re.I):
+                out["steam"].append(m.group(1))
+    for item in Path(os.environ.get("ProgramData", r"C:\ProgramData"), "Epic", "EpicGamesLauncher", "Data",
+                     "Manifests").glob("*.item"):
+        try:
+            out["epic"].append(json.loads(item.read_text(encoding="utf-8")).get("DisplayName", item.stem))
+        except (OSError, ValueError):
+            continue
+    for part in psutil.disk_partitions(all=False):
+        xb = Path(part.mountpoint) / "XboxGames"
+        if xb.is_dir():
+            out["xbox"] += sorted(d.name for d in xb.iterdir() if d.is_dir() and d.name.lower() != "gamesave")
+    if os.name == "nt":
+        import winreg
+        for hive, key in ((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+                          (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")):
+            try:
+                with winreg.OpenKey(hive, key) as k:
+                    for i in range(winreg.QueryInfoKey(k)[0]):
+                        try:
+                            with winreg.OpenKey(k, winreg.EnumKey(k, i)) as sub:
+                                name = winreg.QueryValueEx(sub, "DisplayName")[0]
+                                pub = winreg.QueryValueEx(sub, "Publisher")[0]
+                        except OSError:
+                            continue
+                        if GAME_PUBLISHERS.search(pub) and name not in out["other"]:
+                            out["other"].append(f"{name} ({pub})")
+            except OSError:
+                continue
+    out["count"] = sum(len(v) for v in out.values() if isinstance(v, list))
+    return out
 
 
 def device_info(category):
@@ -478,6 +552,8 @@ def device_info(category):
     category = str(category or "").lower()
     if category not in DEVICE_CATEGORIES:
         return {"error": f"category must be one of {list(DEVICE_CATEGORIES)}"}
+    if category == "games":
+        return installed_games()
     data = _powershell_json(category)
     if category == "battery":
         b = psutil.sensors_battery()
@@ -488,6 +564,11 @@ def device_info(category):
         data["note"] = "health = full-charge capacity / design capacity (Windows battery report)"
     elif category == "internet":
         data["wifi"] = _wifi()
+        data["wifi_radio"] = actions._ps("radios").get("wifi", "unknown")
+    if category == "bluetooth":
+        # an installed adapter and paired devices don't mean Bluetooth is on: read the radio itself
+        data["bluetooth_radio"] = actions._ps("radios").get("bluetooth", "unknown")
+        data["note"] = "bluetooth_radio is whether Bluetooth is switched on; the adapter is just the hardware"
     elif category == "display":
         data["monitors"] = [m.strip("\x00 ") for m in data.get("monitors", []) if m.strip("\x00 ")]
         data["displays"] = _displays()
@@ -630,9 +711,12 @@ TOOLS = {
     },
     "running_apps": {
         "fn": running_apps, "label": "List open apps",
-        "reads": "the names of apps that have a window open",
-        "schema": {"type": "object", "properties": {}},
-        "description": "List the apps that currently have a window open on the laptop.",
+        "reads": "the apps that have a window open (and their window titles, if asked)",
+        "schema": {"type": "object", "properties": {
+            "include_titles": {"type": "boolean", "description": "also return each window's title, which shows "
+                                                                 "e.g. the file open in an editor or the page in a browser"}}},
+        "description": "List the apps that currently have a window open; with include_titles, what each window shows "
+                       "(e.g. 'what's open in VS Code').",
     },
     "list_folder": {
         "fn": list_folder, "label": "List a folder",
@@ -692,7 +776,8 @@ TOOLS = {
                          "description": "battery (health, capacity, time left), display (resolution, refresh rate, "
                                         "brightness), audio (volume, mute, devices), bluetooth (paired devices, "
                                         "connected or not), usb (connected devices), printers, startup (apps that "
-                                        "start with Windows), internet (online or not, Wi-Fi name and signal, IP, gateway), model (laptop "
+                                        "start with Windows), internet (online or not, Wi-Fi name and signal, IP, gateway), games (installed "
+                                        "games: Steam, Epic, Xbox, others), model (laptop "
                                         "maker, model, BIOS)"}},
             "required": ["category"]},
         "description": "Read details about the laptop's devices and settings, one category per call.",
@@ -719,6 +804,79 @@ TOOLS = {
         "description": "Referee for Wordle and Hangman: it picks and keeps the secret word and scores every guess. "
                        "Pass every move of the user to it, then tell the user its 'summary' in full (every letter's "
                        "result, the board, what's left); never invent feedback or a secret word.",
+    },
+    # ---- actions: they change something, so each one is approved by the user first (see actions.py)
+    "open": {
+        "fn": actions.open_, "label": "Open", "action": True,
+        "does": "opens an app from the Start menu, a document or folder, a website, or a Settings page",
+        "schema": {"type": "object", "properties": {
+            "what": {"type": "string", "enum": ["app", "file", "folder", "website", "settings"]},
+            "target": {"type": "string", "description": "app name (e.g. Spotify), full path, https:// address, or a "
+                                                        "Settings page: " + ", ".join(sorted(actions.SETTINGS_PAGES))}},
+            "required": ["what", "target"]},
+        "description": "Open an app, file, folder, website or Windows Settings page. Programs and scripts can't be "
+                       "opened as files; apps open by name.",
+    },
+    "control": {
+        "fn": actions.control, "label": "Change", "action": True,
+        "does": "changes volume, mute, brightness, Bluetooth, Wi-Fi, dark/light theme, or media playback",
+        "schema": {"type": "object", "properties": {
+            "setting": {"type": "string", "enum": ["volume", "mute", "brightness", "bluetooth", "wifi", "theme", "media"]},
+            "value": {"type": "string", "description": "volume/brightness: 0-100; mute/bluetooth/wifi: on or off; "
+                                                       "theme: dark or light; media: play, pause, next, previous or stop"}},
+            "required": ["setting", "value"]},
+        "description": "Change a laptop setting: volume, mute, brightness, Bluetooth, Wi-Fi, theme, or control the "
+                       "music/video playing. Reports the value before and after.",
+    },
+    "window": {
+        "fn": actions.window, "label": "Window", "action": True,
+        "does": "brings an app's window to the front, minimises or maximises it, or closes it like clicking X",
+        "schema": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["focus", "minimize", "maximize", "close"]},
+            "app": {"type": "string", "description": "the app's name, e.g. Spotify or Chrome"}},
+            "required": ["action", "app"]},
+        "description": "Bring an app to the front, minimise, maximise, or close it (closing is like clicking X; the "
+                       "app may ask to save; nothing is force-killed).",
+    },
+    "power": {
+        "fn": actions.power_, "label": "Power", "action": True,
+        "does": "locks the screen, puts the laptop to sleep, or restarts or shuts it down after 60 s (cancellable)",
+        "schema": {"type": "object", "properties": {
+            "mode": {"type": "string", "enum": ["lock", "sleep", "restart", "shutdown", "cancel"]}},
+            "required": ["mode"]},
+        "description": "Lock the screen, sleep, restart or shut down (restart/shutdown wait 60 s; 'cancel' stops them).",
+    },
+    "screenshot": {
+        "fn": actions.take_screenshot, "label": "Take a screenshot", "action": True,
+        "does": "saves a screenshot of the screen to Pictures\\Screenshots",
+        "schema": {"type": "object", "properties": {}},
+        "description": "Take a screenshot and save it to Pictures\\Screenshots.",
+    },
+    "copy": {
+        "fn": actions.copy_to_clipboard, "label": "Copy to the clipboard", "action": True,
+        "does": "puts text on the clipboard (replacing what's there)",
+        "schema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+        "description": "Copy text to the clipboard so the user can paste it.",
+    },
+    "save_note": {
+        "fn": actions.save_note, "label": "Save a note", "action": True,
+        "does": "saves text as a new file in Documents\\Sprout (never overwrites a file)",
+        "schema": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "file name, e.g. shopping list.txt (.txt, .md, .csv or .json)"},
+            "text": {"type": "string"}}, "required": ["name", "text"]},
+        "description": "Save text (a note, a draft, a list) as a new file in Documents\\Sprout.",
+    },
+    "reminder": {
+        "fn": actions.reminder, "label": "Reminder", "action": True,
+        "does": "sets, lists or cancels a reminder shown as a Windows notification",
+        "schema": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["set", "list", "cancel"]},
+            "text": {"type": "string", "description": "for set: what to remind about"},
+            "minutes": {"type": "number", "description": "for set: minutes from now"},
+            "at": {"type": "string", "description": "for set, instead of minutes: a time like 17:30 or 5:30 pm"},
+            "id": {"type": "string", "description": "for cancel: the reminder's id from list"}},
+            "required": ["action"]},
+        "description": "Set a reminder (in N minutes or at a time), list pending reminders, or cancel one.",
     },
     "clipboard_text": {
         "fn": clipboard_text, "label": "Read the clipboard",
@@ -773,4 +931,30 @@ def describe(name, args_json):
         act = args.get("action", "?")
         extra = ": " + " ".join(str(x) for x in (act, args.get("game") if act == "start" else None,
                                                   str(args.get("guess") or "").upper() or None) if x)
+    # actions: the card says exactly what will happen
+    if name == "open":
+        return f"Open {args.get('what', '?')}: {args.get('target', '?')}"
+    if name == "control":
+        s, v = str(args.get("setting", "?")), str(args.get("value", "?"))
+        return {"volume": f"Set volume to {v}%", "brightness": f"Set brightness to {v}%", "mute": f"Turn mute {v}",
+                "bluetooth": f"Turn Bluetooth {v}", "wifi": f"Turn Wi-Fi {v}", "theme": f"Switch to {v} theme",
+                "media": f"Media: {v}"}.get(s, f"Change {s} to {v}")
+    if name == "window":
+        a, app = str(args.get("action", "?")), args.get("app", "?")
+        return {"close": f"Close {app} (like clicking X)", "focus": f"Bring {app} to the front",
+                "minimize": f"Minimise {app}", "maximize": f"Maximise {app}"}.get(a, f"{a} {app}")
+    if name == "power":
+        m = str(args.get("mode", "?"))
+        return {"lock": "Lock the screen", "sleep": "Put the laptop to sleep",
+                "restart": "Restart the laptop in 60 seconds", "shutdown": "Shut down the laptop in 60 seconds",
+                "cancel": "Cancel the restart/shutdown"}.get(m, f"Power: {m}")
+    if name == "copy":
+        return f"Copy {len(str(args.get('text', '')))} characters to the clipboard"
+    if name == "save_note":
+        return f"Save a note: Documents\\Sprout\\{args.get('name', 'note')}"
+    if name == "reminder":
+        if str(args.get("action")) == "set":
+            when = f"in {args['minutes']} min" if args.get("minutes") is not None else f"at {args.get('at', '?')}"
+            return f"Remind you {when}: {args.get('text', '')}"
+        return f"Reminders: {args.get('action', '?')}"
     return t["label"] + extra
