@@ -948,7 +948,7 @@ Remove the shortcuts, the Startup entry and the menu entry with `app\uninstall.p
 
 | Mode | Model (default) | What it's for |
 |---|---|---|
-| Chat | Gemma 4 QAT | Talking like a friend over text: short, human, feelings in words, no emoji (enforced in the stream), honest that it's an AI, replies in your language/Hinglish |
+| Chat | Gemma 4 QAT (thinks briefly when a question needs it) | A personal assistant over text: short, human, no emoji (enforced in the stream), works for the owner, honest that it's an AI, replies in your language/Hinglish |
 | Study | Gemma 4 QAT, thinking on | Tutor: step-by-step explanations, worked examples, quizzes one question at a time |
 | Code | Gemma 4 QAT, thinking on | Write, explain, debug; paste errors or screenshots |
 | See | Gemma 4 QAT + vision | Screenshots, diagrams, photos of notes: description, exact text, error fixes |
@@ -1246,6 +1246,65 @@ Goal: Sprout separate from Edge, quick and smooth.
       shipped script declares the full interface in documented order and calls only the two
       getters; two consecutive reads confirm they change nothing.
 
+56. **Sprout's Chat behaviour, measured and fixed: 3 of 8 scenarios passed before, 8 of 8 after.**
+    - **Test:** `tools/sprout_behaviour_check.py` replays eight conversations based on a real chat
+      with the real model and scores them automatically:
+      - greetings: short, no filler laughter, the owner's name in at most one of four replies;
+      - the owner is the boss, not a friend;
+      - time and place from the laptop;
+      - finding an ID document in one request without "should I?";
+      - Wordle and Hangman with feedback consistent with the secret word;
+      - a scheduling sum with one right answer (4:35).
+    - **The scorer itself was corrected twice before the baseline:** it first passed an answer
+      that stated 4:50 before correcting itself, and missed a lowercase reveal. Then the stricter
+      version failed a correct Wordle reply that said some letters were absent, so it now checks
+      every "not in the word" claim against the real word.
+
+      | Scenario | Before | After |
+      |---|---|---|
+      | Greetings | name in 3 of 4 replies, "haha" twice | name 0 of 4, no filler |
+      | Boss, not friend | called itself a friend | "boss", no off-tone words |
+      | Time / location | pass / pass (finding 55) | pass / pass |
+      | Find my ID | asked "should I?"; a 3-round run once ended with an **empty reply** | found in one search call |
+      | Wordle | improvised feedback that contradicted its own word | refereed every move, consistent |
+      | Hangman | "no O" in a word with an O | refereed every move, consistent |
+      | Schedule (right: 4:35) | right in the baseline run; 4:50 stated first in an earlier run | 4:35 |
+      | First word, turns without tools (median) | 2.0 s | 1.8 s |
+    - **Fixes:**
+      - **Persona:** Chat mode is a sharp personal assistant working for the owner (the boss),
+        brief and warm, with no filler laughter, gushing or long apologies. The name is known but
+        used rarely.
+      - **Empty replies:** after the last allowed tool round the model was still offered tools; if
+        it asked for one more, the answer ended empty. The final pass now has no tools.
+      - **File search:** one call takes several spellings (`aadhaar|aadhar`), searches Desktop,
+        Documents, Downloads and Pictures first, and skips program data (AppData, node_modules,
+        caches). The model is given the real folder paths instead of guessing them.
+      - **Games:** a referee (`app/games.py`) picks and keeps the secret word and scores every
+        guess with Wordle's rules (greens first, then repeated letters). The model could not keep a
+        secret it never wrote down, and when merely offered the referee it still improvised.
+        So a message that is a game move now *requires* a tool call (`tool_choice: required`,
+        llama.cpp), and the referee needs no permission card because it reads nothing.
+      - **Reasoning when needed:** Chat answers instantly by default but thinks first when a
+        question has several numbers or asks how many/when/compare/plan. The thinking is capped at
+        320 tokens (`reasoning_budget_tokens`, llama.cpp): the schedule answer arrives in ~11 s
+        with a warm cache (28 s on the first switch into thinking, which changes the prompt
+        prefix). The Think switch still forces full, uncapped reasoning.
+    - **Repeatability** (sampling at temperature 1.0, so single runs vary): three after-runs scored
+      8/8, 8/8 and 8/8. One Hangman "fail" in the second run was a scorer bug (it read "e a l" from
+      "Give me a letter" as a board); the game itself was right, and the scorer was fixed and
+      re-checked on that transcript.
+    - **The first message after a start is still slow** (about 43 s from model start to the first
+      word): 13.7 s to load, then about 29 s to read the first ~2,400-token prompt while the
+      experts are paged in from the SSD. Sprout now pre-reads the Chat instructions when the window
+      opens (the first message then processes 1 token instead of 2,400), but the paging is the
+      bottleneck, so this only helps if the first question comes 30 s or more after opening.
+      Keeping the model loaded longer (a longer idle timer) would avoid most cold starts, at the
+      cost of holding ~5.5 GB of VRAM and RAM while idle: a decision for the owner.
+    - **What this doesn't change:** the model's intelligence (the same Gemma 4 QAT weights,
+      MMLU-Pro 79%). Fine-tuning a 26B model isn't feasible on this hardware and could cost the
+      measured quality; these fixes change what the model is told, what it can look up, and when
+      it reasons.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
@@ -1340,8 +1399,9 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
 | `tools/build_llama.ps1` | CUDA sm_86 + AVX-512 (VNNI/VBMI) build; parallel jobs sized to free RAM |
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
-| `tests/` | 60 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
+| `tests/` | 65 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
+| `tools/sprout_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
 | `tools/sprout_tools_check.py`, `tools/sprout_window_check.py`, `tools/sprout_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
 | `tools/hash_models.py` | SHA-256 of every model file, compared with Hugging Face's published hash at the pinned revision → `results/model_files.json` |
 
@@ -1398,7 +1458,7 @@ git apply <this repo>\patches\llama-bench-moe-cache-mib.patch       # llama-benc
 git apply <this repo>\patches\llama-perplexity-parse-special.patch  # chat-corpus KLD (finding 30)
 cd <this repo>
 powershell -ExecutionPolicy Bypass -File tools\build_llama.ps1       # CUDA sm_86, AVX-512 VNNI/VBMI, BF16 off
-python -m unittest discover tests                                    # 60 tests
+python -m unittest discover tests                                    # 65 tests
 ```
 
 **3. Models and data.** `fetch_model.ps1` checks every file against the SHA-256 that

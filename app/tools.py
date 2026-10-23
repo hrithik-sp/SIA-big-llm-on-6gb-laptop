@@ -33,6 +33,8 @@ from pathlib import Path
 
 import psutil
 
+import games
+
 APP = Path(__file__).resolve().parent
 GiB = 1024 ** 3
 
@@ -264,36 +266,61 @@ def read_file(path, max_chars=16000):
             "text": text[:max_chars]}
 
 
+SEARCH_SKIP = {"appdata", "node_modules", "site-packages", "__pycache__", ".git", ".venv", "venv", "cache",
+               "temp", "tmp"}  # program and library data: skipped unless the search starts inside them
+
+
+def user_folders():
+    """The user's real folders (Windows known folders; OneDrive-redirected ones included)."""
+    out = {"home": str(Path.home())}
+    for name, guid in (("desktop", FOLDERS["desktop"]), ("documents", FOLDERS["documents"]),
+                       ("downloads", FOLDERS["downloads"]), ("pictures", "33E28130-4E1E-4676-835A-98395C3BC3BB")):
+        p = _known_folder(guid) if os.name == "nt" else None
+        out[name] = str(p if p and p.is_dir() else Path.home() / name.capitalize())
+    return out
+
+
 def find_files(name, folder="~", limit=40):
-    """Find files or folders by name (wildcards like *.pdf work) under a folder; max ~6 s."""
-    root = safe_path(folder, "dir")
-    pattern = str(name or "").strip()
-    if not pattern:
+    """Find files or folders by name under a folder; max ~8 s. Several spellings can be joined with |
+    (aadhaar|aadhar); wildcards like *.pdf work. From the home folder, the personal folders are searched
+    first and program data (AppData, node_modules, caches) is skipped."""
+    patterns = [p.strip().lower() for p in str(name or "").split("|") if p.strip()]
+    if not patterns:
         return {"error": "give a name or pattern to look for"}
-    if not any(c in pattern for c in "*?"):
-        pattern = f"*{pattern}*"
+    patterns = [p if any(c in p for c in "*?") else f"*{p}*" for p in patterns]
+    root = safe_path(folder, "dir")
     limit = max(1, min(int(limit), 100))
-    found, scanned, t0 = [], 0, time.time()
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(("$", ".")) and
-                       not any(rx.search(os.path.join(dirpath, d)) for rx in BLOCKED_DIRS)]
-        for n in dirnames + filenames:
-            scanned += 1
-            if fnmatch.fnmatch(n.lower(), pattern.lower()) and not any(rx.search(n) for rx in BLOCKED_NAMES):
-                full = os.path.join(dirpath, n)
-                try:
-                    st = os.stat(full)
-                except OSError:
-                    continue
-                found.append({"path": full, "type": "folder" if n in dirnames else "file",
-                              "size_mb": round(st.st_size / 2 ** 20, 2),
-                              "modified": dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")})
-                if len(found) >= limit:
-                    break
-        if len(found) >= limit or time.time() - t0 > 6:
+    roots = [root]
+    if root == Path.home().resolve():  # personal folders first, then the rest of home
+        roots = [Path(p) for k, p in user_folders().items() if k != "home"] + [root]
+    found, seen, scanned, t0 = [], set(), 0, time.time()
+    for start in roots:
+        for dirpath, dirnames, filenames in os.walk(start):
+            dirnames[:] = [d for d in dirnames if not d.startswith(("$", ".")) and d.lower() not in SEARCH_SKIP
+                           and not any(rx.search(os.path.join(dirpath, d)) for rx in BLOCKED_DIRS)]
+            for n in dirnames + filenames:
+                scanned += 1
+                low = n.lower()
+                if any(fnmatch.fnmatch(low, p) for p in patterns) and not any(rx.search(n) for rx in BLOCKED_NAMES):
+                    full = os.path.join(dirpath, n)
+                    if full.lower() in seen:
+                        continue
+                    seen.add(full.lower())
+                    try:
+                        st = os.stat(full)
+                    except OSError:
+                        continue
+                    found.append({"path": full, "type": "folder" if n in dirnames else "file",
+                                  "size_mb": round(st.st_size / 2 ** 20, 2),
+                                  "modified": dt.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")})
+                    if len(found) >= limit:
+                        break
+            if len(found) >= limit or time.time() - t0 > 8:
+                break
+        if len(found) >= limit or time.time() - t0 > 8:
             break
-    return {"searched": str(root), "pattern": pattern, "matches": found, "entries_scanned": scanned,
-            "complete": time.time() - t0 <= 6 and len(found) < limit}
+    return {"searched": [str(r) for r in roots], "patterns": patterns, "matches": found, "entries_scanned": scanned,
+            "complete": time.time() - t0 <= 8 and len(found) < limit}
 
 
 def _wifi():
@@ -597,10 +624,13 @@ TOOLS = {
         "fn": find_files, "label": "Search for files",
         "reads": "file and folder names (not contents) under one folder",
         "schema": {"type": "object", "properties": {
-            "name": {"type": "string", "description": "part of the name, or a pattern like *.pdf"},
-            "folder": {"type": "string", "description": "where to search, e.g. ~ (the user's home) or D:\\"},
+            "name": {"type": "string", "description": "part of the name; join spelling variants with | "
+                                                      "(e.g. aadhaar|aadhar|adhar), or a pattern like *.pdf"},
+            "folder": {"type": "string", "description": "where to search; default ~ (the user's home: personal "
+                                                        "folders first, program data skipped), or e.g. D:\\"},
             "limit": {"type": "integer", "description": "max matches (1-100)"}}, "required": ["name"]},
-        "description": "Find files or folders by name on the laptop.",
+        "description": "Find files or folders by name on the laptop. One call with all likely spellings joined "
+                       "by | usually finds it.",
     },
     "system_info": {
         "fn": system_info, "label": "Read system information",
@@ -643,6 +673,18 @@ TOOLS = {
         "schema": {"type": "object", "properties": {}},
         "description": "Where the laptop is right now: nearest town and city, coordinates and accuracy (from "
                        "Windows location), plus the Windows region and time zone.",
+    },
+    "word_game": {
+        "fn": games.word_game, "label": "Word game", "auto": True,  # reads nothing from the laptop: no permission card
+        "reads": "nothing from the laptop (Sprout's own game engine)",
+        "schema": {"type": "object", "properties": {
+            "action": {"type": "string", "enum": ["start", "guess", "hint", "reveal"]},
+            "game": {"type": "string", "enum": ["wordle", "hangman"], "description": "for start"},
+            "guess": {"type": "string", "description": "for guess: the user's word (Wordle) or letter/word (Hangman)"}},
+            "required": ["action"]},
+        "description": "Referee for Wordle and Hangman: it picks and keeps the secret word and scores every guess. "
+                       "Start a game with it, pass every guess of the user to it, and report its feedback exactly; "
+                       "never invent feedback or a secret word. Use reveal only if the user gives up or asks.",
     },
     "clipboard_text": {
         "fn": clipboard_text, "label": "Read the clipboard",
@@ -693,4 +735,8 @@ def describe(name, args_json):
         extra = f" named '{args.get('name', '?')}' in {args.get('folder', '~')}"
     if name == "device_info":
         extra = f": {args.get('category', '?')}"
+    if name == "word_game":
+        act = args.get("action", "?")
+        extra = ": " + " ".join(str(x) for x in (act, args.get("game") if act == "start" else None,
+                                                  str(args.get("guess") or "").upper() or None) if x)
     return t["label"] + extra

@@ -90,7 +90,7 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
 </table>
 
 The full story, including the wrong turns and how each was caught, is in
-**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 29 problems with how
+**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 32 problems with how
 each was solved.
 
 ## Sprout
@@ -117,12 +117,12 @@ A one-click desktop app built on these results:
 | Path | Contents |
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (55 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (56 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
 | `app/` | Sprout (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 60 unit tests |
+| `tests/` | 65 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -130,7 +130,7 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 60 tests, no GPU or models needed
+python -m unittest discover tests          # 65 tests, no GPU or models needed
 ```
 
 - **Run Sprout:** build llama.cpp, download the five model files, run `app\install.ps1`.

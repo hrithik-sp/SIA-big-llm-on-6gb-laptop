@@ -17,7 +17,7 @@ from a fresh test profile; the worked example was checked by hand).*
 
 | Mode | Model | For |
 |---|---|---|
-| **Chat** | Gemma 4 QAT | Talking like a friend over text: short, human replies, feelings in words, no emoji |
+| **Chat** | Gemma 4 QAT | Your personal assistant over text: short, human replies, no emoji; thinks briefly on its own when a question needs working out; plays Wordle and Hangman with a real referee |
 | **Study** | Gemma 4 QAT, thinking on | Step-by-step explanations, worked examples, quizzes one question at a time |
 | **Code** | Gemma 4 QAT, thinking on | Write, explain and debug code; paste errors or screenshots |
 | **See** | Gemma 4 QAT + vision | Screenshots, diagrams, photos of notes: description, exact text, fixes |
@@ -146,8 +146,9 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 60 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 65 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |
+| `python tools\sprout_behaviour_check.py` | Chat behaviour in eight scripted conversations: persona, time and place, file search, games, a reasoning sum (8/8, finding 56) |
 | `python tools\sprout_window_check.py` | The standalone window: hidden start, ~0.1 s show, close-to-hide, single instance, memory and a clean quit (9/9, finding 52) |

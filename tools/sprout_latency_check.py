@@ -68,6 +68,16 @@ def main():
         except OSError:
             time.sleep(0.5)
     history = []
+    t_start = time.time()  # like opening the window: the model loads (and pre-reads the instructions)
+    while time.time() - t_start < 180:  # while the user starts typing
+        try:
+            if (call("GET", "/api/status", timeout=3)[1] or {}).get("models", {}).get("gemma") == "loaded":
+                break
+        except OSError:
+            pass
+        time.sleep(0.5)
+    print(f"model loaded {time.time() - t_start:.1f} s after start; typing for 8 s")
+    time.sleep(8)
     try:
         print(f"{'turn':<28}{'first word':>11}{'total':>8}{'processed':>11}{'reused':>8}  tools / answer")
         for i, text in enumerate(TURNS):

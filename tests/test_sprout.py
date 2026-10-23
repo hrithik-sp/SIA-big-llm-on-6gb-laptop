@@ -121,7 +121,9 @@ class SettingsAndTools(unittest.TestCase):
         body, _, _ = server.build_request({"mode": "code", "messages": self.msgs})
         system = body["messages"][0]["content"]
         self.assertIn("Hrithik S P", system)
-        self.assertIn("Hrithik is your boss", system)
+        self.assertIn("is your boss", system)
+        self.assertIn("not a friend", system)
+        self.assertIn("use it rarely", system)  # knows the name, doesn't greet with it every time
         server.save_settings(dict(server.DEFAULT_SETTINGS))
         body, _, _ = server.build_request({"mode": "code", "messages": self.msgs})
         self.assertNotIn("About the user", body["messages"][0]["content"])
@@ -172,6 +174,67 @@ class SettingsAndTools(unittest.TestCase):
         self.assertEqual(server.tools.describe("device_info", '{"category": "battery"}'), "Read device details: battery")
         line = server.tools.now_context()
         self.assertTrue(line.startswith("Right now on this laptop: ") and "UTC" in line)
+
+    def test_wordle_referee_scores_like_wordle(self):
+        g = server.tools.games
+        self.assertEqual(g._wordle_marks("doing", "proof")[1], "in word, wrong spot")  # the O it once denied
+        self.assertEqual(g._wordle_marks("babes", "abbey"),  # repeated letters: greens first, then the rest
+                         ["in word, wrong spot", "in word, wrong spot", "right spot", "right spot", "not in word"])
+        self.assertEqual(g._wordle_marks("speed", "abide")[2:5], ["in word, wrong spot", "not in word", "in word, wrong spot"])
+        start = g.word_game("start", "wordle")
+        self.assertNotIn("word", start)  # never hands the secret to the model at the start
+        g.GAME["word"] = "proof"
+        out = g.word_game("guess", guess="doing")
+        self.assertEqual(out["feedback"][1], {"letter": "O", "result": "in word, wrong spot"})
+        self.assertNotIn("word", out)
+        self.assertEqual(g.word_game("guess", guess="proof")["word"], "PROOF")  # revealed only when over
+        self.assertTrue(all(len(w) == 5 for w in g.WORDLE_WORDS) and len(g.WORDLE_WORDS) > 300)
+
+    def test_hangman_referee_keeps_the_board_consistent(self):
+        g = server.tools.games
+        g.word_game("start", "hangman")
+        g.GAME["word"] = "program"
+        self.assertTrue(g.word_game("guess", guess="o")["in_word"])  # the O it once denied
+        out = g.word_game("guess", guess="r")
+        self.assertEqual((out["board"], out["count"]), ("_ R O _ R _ _", 2))
+        self.assertNotIn("word", out)
+        self.assertFalse(g.word_game("guess", guess="z")["in_word"])
+        self.assertEqual(g.word_game("reveal")["word"], "PROGRAM")
+        self.assertEqual(server.tools.TOOLS["word_game"].get("auto"), True)
+
+    def test_game_moves_go_to_the_referee(self):
+        g = server.tools.games
+        g.GAME.clear()
+        self.assertTrue(g.is_game_turn("let's play wordle"))
+        self.assertFalse(g.is_game_turn("guest"))  # no game running: an ordinary word
+        g.word_game("start", "wordle")
+        for move, forced in (("guest", True), ("o", True), ("I give up", True), ("give me a hint", True),
+                             ("ok", False), ("what time is it?", False), ("thanks a lot", False)):
+            self.assertEqual(g.is_game_turn(move), forced, move)
+        body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "guest"}]})
+        self.assertEqual(body.get("tool_choice"), "required")
+        g.word_game("reveal")
+        self.assertFalse(g.is_game_turn("guest"))  # the game is over
+        self.assertTrue(g.is_game_turn("play again"))
+
+    def test_chat_thinks_only_when_needed(self):
+        for text, expect in (("When do I finish if I have 3 meetings of 45 minutes from 2 pm?", True),
+                             ("how many days until 15 November?", True), ("yo", False),
+                             ("what time is it?", False), ("find my aadhaar card", False)):
+            body, _, _ = server.build_request({"mode": "chat", "think": False,
+                                               "messages": [{"role": "user", "content": text}]})
+            self.assertEqual(body["chat_template_kwargs"]["enable_thinking"], expect, text)
+        body, _, _ = server.build_request({"mode": "chat", "think": False, "messages": [{"role": "user", "content": "yo"}]})
+        self.assertNotIn("tool_choice", body)
+
+    def test_find_files_takes_spelling_variants(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            for n in ("my aadhar scan.pdf", "Aadhaar front.jpg", "notes.txt"):
+                server.Path(d, n).write_text("x")
+            out = server.tools.find_files("aadhaar|aadhar", d)
+            self.assertEqual(sorted(server.Path(m["path"]).name for m in out["matches"]),
+                             ["Aadhaar front.jpg", "my aadhar scan.pdf"])
 
     def test_tools_are_read_only_and_guarded(self):
         self.assertIn("error", server.tools.run("recent_files", '{"folder": "C:/Windows/System32"}'))

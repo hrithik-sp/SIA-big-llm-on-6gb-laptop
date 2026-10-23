@@ -293,6 +293,13 @@ The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I foun
   resolution, it guessed. I gave every request the live clock, added location and device tools,
   and a rule against guessing. Ten everyday laptop questions went from 3 to 10 answered
   correctly (finding 55).
+- **It behaved like a chatty friend, not an assistant,** and fumbled games. A scripted
+  behaviour test of eight conversations went from 3 to 8 passing (finding 56). The fixes:
+  - a boss-and-assistant persona;
+  - a final answer pass that can't come back empty;
+  - one-call file search over the personal folders;
+  - a game referee that the model is required to use;
+  - short automatic reasoning for questions with numbers.
 - **The live clock first broke prompt caching** (one line that changed every minute, at the top
   of the prompt): replies in a real chat took 12–16 s. With the clock moved to the newest message,
   a six-turn test re-processes only the new message and shows the first word in 2–3 s
@@ -503,6 +510,9 @@ Full commands: lab notebook, "Recommended settings".
 | 27 | Sprout invented the time and a screen resolution | Plausible but unsourced answers | Live clock with every request; location and device tools; no-guessing rule | 55 |
 | 28 | A changing clock line at the top of the prompt | 12–16 s replies (cache re-processed) | Clock moved to the newest message; unit test keeps the prompt stable | 55 |
 | 29 | A volume probe declared Windows' audio interface wrongly | One read called SetMute | Speakers restored; full interface in documented order, getters only | 55 |
+| 30 | The tool loop could end with an empty reply | Answer blank after the last tool round | Final pass without tools | 56 |
+| 31 | The model can't keep a secret word between turns | Contradictory Wordle feedback, wrong Hangman boards | A game referee in code; game moves require a tool call | 56 |
+| 32 | Arithmetic answered without working | 4:40 or 4:50 stated instead of 4:35 in some runs | Automatic short reasoning (320-token budget) for questions that need it | 56 |
 
 ---
 
