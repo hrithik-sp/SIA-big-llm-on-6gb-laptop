@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+# Large files and per-user data live outside the repo, in LLM_HOME (default %USERPROFILE%\llm):
+# llama.cpp builds, models, datasets, KLD logits, server logs, Sprout chats and settings.
+*.gguf
+*.log
+# Private notes and local tool state (never published)
+private/
+.venv/
+venv/
+results/PAUSE

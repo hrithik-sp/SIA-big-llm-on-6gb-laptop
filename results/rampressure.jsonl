@@ -1,0 +1,17 @@
+{"time":"2026-10-22T20:53:30","requested_gib":0,"held_gib":0,"tag":"rampressure-gptoss-mmap-hold0"}
+{"time":"2026-10-22T20:54:17","requested_gib":0,"held_gib":0,"tag":"rampressure-gptoss-none-hold0"}
+{"time":"2026-10-22T20:55:08","requested_gib":0,"held_gib":0,"tag":"rampressure-qat-hold0"}
+{"time":"2026-10-22T20:56:00","requested_gib":2,"held_gib":2,"tag":"rampressure-gptoss-mmap-hold2"}
+{"time":"2026-10-22T20:56:09","requested_gib":2,"held_gib":2,"tag":"rampressure-gptoss-none-hold2"}
+{"time":"2026-10-22T21:10:31","requested_gib":0,"held_gib":0,"tag":"rampressure-gptoss-mmap-hold0"}
+{"time":"2026-10-22T21:18:12","requested_gib":0,"held_gib":0,"tag":"rampressure-gptoss-none-hold0"}
+{"time":"2026-10-22T21:21:45","requested_gib":0,"held_gib":0,"tag":"rampressure-qat-hold0"}
+{"time":"2026-10-22T21:32:36","requested_gib":2,"held_gib":2,"tag":"rampressure-gptoss-mmap-hold2"}
+{"time":"2026-10-22T21:39:43","requested_gib":2,"held_gib":2,"tag":"rampressure-gptoss-none-hold2"}
+{"time":"2026-10-22T21:43:44","requested_gib":2,"held_gib":2,"tag":"rampressure-qat-hold2"}
+{"time":"2026-10-22T21:44:57","requested_gib":4,"held_gib":4,"tag":"rampressure-gptoss-mmap-hold4"}
+{"time":"2026-10-22T21:45:02","requested_gib":4,"held_gib":4,"tag":"rampressure-gptoss-none-hold4"}
+{"time":"2026-10-22T21:46:23","requested_gib":4,"held_gib":4,"tag":"rampressure-qat-hold4"}
+{"time":"2026-10-22T21:47:19","requested_gib":6,"held_gib":6,"tag":"rampressure-gptoss-mmap-hold6"}
+{"time":"2026-10-22T21:47:25","requested_gib":6,"held_gib":6,"tag":"rampressure-gptoss-none-hold6"}
+{"time":"2026-10-22T21:48:35","requested_gib":6,"held_gib":6,"tag":"rampressure-qat-hold6"}

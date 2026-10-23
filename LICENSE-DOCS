@@ -1,0 +1,18 @@
+Documentation and figures: Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Copyright (c) 2026 Hrithik S P
+
+The following parts of this repository are licensed under CC BY 4.0:
+- README.md and REPORT.md;
+- everything in docs/, including the charts and screenshots in docs/images/.
+
+You may share and adapt this material for any purpose, including commercially, as long as
+you give appropriate credit (Hrithik S P, with a link to
+https://github.com/hrithik-sp/SPROUT-big-llm-on-6gb-laptop), link to the licence, and
+indicate if changes were made.
+
+Full licence text: https://creativecommons.org/licenses/by/4.0/legalcode
+Summary: https://creativecommons.org/licenses/by/4.0/
+
+The source code (app/, tools/, tests/, patches/ and the other code files) is licensed under
+the MIT licence in LICENSE.

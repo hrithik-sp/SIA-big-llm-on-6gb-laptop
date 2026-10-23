@@ -1,0 +1,11 @@
+SPROUT: big LLMs on a 6 GB laptop
+Copyright (c) 2026 Hrithik S P
+
+Code: MIT (LICENSE). Documentation and figures: CC BY 4.0 (LICENSE-DOCS).
+
+Third-party components keep their own licences:
+- app/static/vendor: marked (MIT), DOMPurify (Apache-2.0 or MPL-2.0), KaTeX (MIT),
+  highlight.js (BSD-3-Clause); licence texts in app/static/vendor/licenses.
+- patches/: modifications to llama.cpp (MIT, Copyright (c) 2023-2026 The ggml authors).
+- Models used by this project are not included and come under their own licences; see each
+  model card.

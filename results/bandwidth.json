@@ -1,0 +1,11 @@
+{
+  "cpu_threads": 8,
+  "cpu_read_GBps_1t": 33.6,
+  "cpu_read_GBps_8t": 54.4,
+  "cpu_read_GBps_16t": 53.7,
+  "cpu_read_GBps": 54.4,
+  "gpu": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+  "gpu_read_GBps": 162.1,
+  "h2d_pinned_GBps": 13.1,
+  "h2d_pageable_GBps": 12.8
+}

@@ -1,0 +1,44 @@
+﻿diff --git a/tools/perplexity/perplexity.cpp b/tools/perplexity/perplexity.cpp
+index 601361acd..83a6df47d 100644
+--- a/tools/perplexity/perplexity.cpp
++++ b/tools/perplexity/perplexity.cpp
+@@ -11,6 +11,7 @@
+ #include <clocale>
+ #include <cmath>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <ctime>
+ #include <fstream>
+@@ -24,6 +25,13 @@
+ #pragma warning(disable: 4244 4267) // possible loss of data
+ #endif
+ 
++// LLAMA_PERPLEXITY_PARSE_SPECIAL=1: tokenize the input with parse_special, so chat-template
++// markers in a chat-formatted evaluation text become real special tokens (default: literal text)
++static bool ppl_parse_special() {
++    const char * env = getenv("LLAMA_PERPLEXITY_PARSE_SPECIAL");
++    return env != nullptr && atoi(env) == 1;
++}
++
+ struct results_perplexity {
+     std::vector<llama_token> tokens;
+     double                   ppl_value;
+@@ -307,7 +315,7 @@ static results_perplexity perplexity_v2(llama_context * ctx, const common_params
+ 
+     LOG_INF("%s: tokenizing the input ..\n", __func__);
+ 
+-    std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, true);
++    std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, true, ppl_parse_special());
+ 
+     const int n_ctx = llama_n_ctx(ctx);
+ 
+@@ -470,7 +478,7 @@ static results_perplexity perplexity(llama_context * ctx, const common_params &
+     auto tim1 = std::chrono::high_resolution_clock::now();
+     LOG_INF("%s: tokenizing the input ..\n", __func__);
+ 
+-    std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, true);
++    std::vector<llama_token> tokens = common_tokenize(ctx, params.prompt, true, ppl_parse_special());
+ 
+     auto tim2 = std::chrono::high_resolution_clock::now();
+     LOG_INF("%s: tokenization took %g ms\n",__func__,1e-3*std::chrono::duration_cast<std::chrono::microseconds>(tim2-tim1).count());

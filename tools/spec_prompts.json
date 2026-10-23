@@ -1,0 +1,8 @@
+[
+  {"id": "code", "prompt": "Write a Python function that parses an ISO 8601 date string (YYYY-MM-DD) without using the datetime module, validates month and day ranges including leap years, and returns a tuple (year, month, day). Include a docstring and three example calls."},
+  {"id": "explain", "prompt": "Explain how a hash table handles collisions using separate chaining and open addressing. Compare their memory use and performance as the load factor grows."},
+  {"id": "summarize", "prompt": "Summarize the following in five bullet points: The Industrial Revolution began in Britain in the late 18th century, driven by mechanized textile production, the steam engine, and new iron-making techniques. It shifted economies from agrarian work to factory production, drew people from the countryside into rapidly growing cities, and created new social classes. Transport changed through canals and later railways, which lowered the cost of moving goods. Working conditions in early factories were harsh, with long hours and child labour, which led to reform movements and the first labour laws. The revolution spread to Europe and North America during the 19th century."},
+  {"id": "facts", "prompt": "List the eight planets of the solar system in order from the Sun, and for each give one distinctive physical fact."},
+  {"id": "reasoning", "prompt": "A train leaves city A at 9:00 travelling at 80 km/h. Another train leaves city B, 300 km away, at 10:00 travelling towards A at 100 km/h. At what time do they meet, and how far from A? Show the steps."},
+  {"id": "creative", "prompt": "Write a short story of about 150 words about a lighthouse keeper who discovers that the lighthouse light has started blinking in Morse code on its own."}
+]

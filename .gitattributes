@@ -1,0 +1,6 @@
+* text=auto
+# patches must stay byte-exact for git apply
+*.patch -text
+*.png binary
+*.ico binary
+*.woff2 binary

@@ -1,0 +1,101 @@
+[
+ {
+  "repo": "ggml-org/gpt-oss-20b-GGUF",
+  "revision": "15dcfc7e7c608c6161507211ed43c5b590801b4b",
+  "file": "gpt-oss-20b-MXFP4.gguf",
+  "role": "gpt-oss-20b, released MXFP4",
+  "bytes": 12109566624,
+  "sha256": "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901",
+  "matches_published": true
+ },
+ {
+  "repo": "ggml-org/gpt-oss-20b-GGUF",
+  "revision": "15dcfc7e7c608c6161507211ed43c5b590801b4b",
+  "file": "eagle3-gpt-oss-20b-Q8_0.gguf",
+  "role": "EAGLE-3 draft for gpt-oss (finding 35)",
+  "bytes": 921488000,
+  "sha256": "6955f98a701e97a8c969f3ff33be8ba17b35bd60e5ac96258d2c42d710c7d63f",
+  "matches_published": true
+ },
+ {
+  "repo": "google/gemma-4-26B-A4B-it-qat-q4_0-gguf",
+  "revision": "d1c082be9cf3c8a514acf63b8761f4b41935842e",
+  "file": "gemma-4-26B_q4_0-it.gguf",
+  "role": "Gemma 4 26B-A4B QAT Q4_0 (Google)",
+  "bytes": 14439363584,
+  "sha256": "3eca3b8f6d7baf218a7dd6bba5fb59a56ee25fe2d567b6f5f589b4f697eca51d",
+  "matches_published": true
+ },
+ {
+  "repo": "google/gemma-4-26B-A4B-it-qat-q4_0-gguf",
+  "revision": "d1c082be9cf3c8a514acf63b8761f4b41935842e",
+  "file": "gemma-4-26B-it-mmproj.gguf",
+  "role": "Gemma 4 vision projector (Sprout)",
+  "bytes": 1194828160,
+  "sha256": "a359953a076b877db30c31dbbb4c6d93b4a6e017ee5db5784247e4d4c0dd4f3b",
+  "matches_published": true
+ },
+ {
+  "repo": "unsloth/gemma-4-26B-A4B-it-qat-GGUF",
+  "revision": "7b92b5b28818151e8669af2e45e88d6086f490dd",
+  "file": "mtp-gemma-4-26B-A4B-it.gguf",
+  "role": "QAT MTP head (speculative decoding)",
+  "bytes": 251939328,
+  "sha256": "7272d97595f0d4c74bd7b623492b7dbdaafd8b7c72f329a8270ba4eca68f768a",
+  "matches_published": true
+ },
+ {
+  "repo": "unsloth/gemma-4-26B-A4B-it-GGUF",
+  "revision": "c099eb48e663fd284577b04978a94ffccb261841",
+  "file": "gemma-4-26B-A4B-it-Q8_0.gguf",
+  "role": "Gemma 4 Q8_0, quality reference",
+  "bytes": 26859861728,
+  "sha256": "5f7cbd0f4564e84342fc34321a09acb54b1a3da9215124e5bf444baa6dda152c",
+  "matches_published": true
+ },
+ {
+  "repo": "unsloth/gemma-4-26B-A4B-it-GGUF",
+  "revision": "c099eb48e663fd284577b04978a94ffccb261841",
+  "file": "mtp-gemma-4-26B-A4B-it.gguf",
+  "role": "MTP head for Q8_0",
+  "bytes": 461766816,
+  "sha256": "6326fb9f5e487aa8dcdd313a091e3c67724cb2a666ec3b7d2895b5b26d93ed1b",
+  "matches_published": true
+ },
+ {
+  "repo": "unsloth/gemma-4-26B-A4B-it-GGUF",
+  "revision": "c099eb48e663fd284577b04978a94ffccb261841",
+  "file": "gemma-4-26B-A4B-it-UD-IQ2_M.gguf",
+  "role": "lossy comparison",
+  "bytes": 10014755296,
+  "sha256": "3fe245f4436ab44c103291222e81c514e53ca382871b555df24fea11e36b3c3a",
+  "matches_published": true
+ },
+ {
+  "repo": "unsloth/gemma-4-26B-A4B-it-GGUF",
+  "revision": "c099eb48e663fd284577b04978a94ffccb261841",
+  "file": "gemma-4-26B-A4B-it-UD-IQ3_XXS.gguf",
+  "role": "lossy comparison",
+  "bytes": 11416548832,
+  "sha256": "3b7aec683e176e1d957d007e0fb590611d82aec4db358d99b7f9714b6bc7bfc2",
+  "matches_published": true
+ },
+ {
+  "repo": "unsloth/gemma-4-26B-A4B-it-GGUF",
+  "revision": "c099eb48e663fd284577b04978a94ffccb261841",
+  "file": "gemma-4-26B-A4B-it-UD-Q3_K_M.gguf",
+  "role": "lossy comparison",
+  "bytes": 12728497888,
+  "sha256": "811882f6df81c8ea204a5d382f196d6bd601245091786912d4c70df41cdfa052",
+  "matches_published": true
+ },
+ {
+  "repo": "ggml-org/embeddinggemma-2-GGUF",
+  "revision": "58faf90940886df2d62be555c8765d00dac362c5",
+  "file": "embeddinggemma-2-Q8_0.gguf",
+  "role": "Sprout Library search",
+  "bytes": 309855456,
+  "sha256": "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135",
+  "matches_published": true
+ }
+]
