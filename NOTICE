@@ -7,5 +7,8 @@ Third-party components keep their own licences:
 - app/static/vendor: marked (MIT), DOMPurify (Apache-2.0 or MPL-2.0), KaTeX (MIT),
   highlight.js (BSD-3-Clause); licence texts in app/static/vendor/licenses.
 - patches/: modifications to llama.cpp (MIT, Copyright (c) 2023-2026 The ggml authors).
+- app/data/places.tsv: place names and coordinates from GeoNames (https://www.geonames.org),
+  cities15000, admin1 codes and country info, licensed CC BY 4.0; reduced to name, region,
+  country, coordinates and population.
 - Models used by this project are not included and come under their own licences; see each
   model card.

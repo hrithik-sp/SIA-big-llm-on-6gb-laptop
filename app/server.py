@@ -601,8 +601,13 @@ def save_settings(st):
 
 
 TOOL_GUIDE = ("You can look things up on the user's laptop with the provided read-only tools: vitals, system "
-              "information, open browser tabs, open apps, running processes, installed apps, the clipboard, "
-              "recent files, and any folder or file (list, search by name, read text/PDF/Word). Use a tool only "
+              "information, device details (battery health, display and brightness, volume, Bluetooth, USB, "
+              "printers, startup apps, internet connection, laptop model), location, open browser tabs, open apps, "
+              "running processes, installed apps, the clipboard, recent and recently opened files, and any folder "
+              "or file (list, search by name, read text/PDF/Word). The user's newest message ends with the laptop's "
+              "current date, time and region in [brackets]; use them directly. Never guess a fact about the laptop or the user's surroundings (time, place, "
+              "hardware, settings, files): if it isn't above or in a tool result, call the tool that has it, or "
+              "say you can't see it. Use a tool only "
               "when the user's request needs information from their laptop; the user approves each use. "
               "Make as few tool calls as possible (usually one), only for what was asked: don't check other "
               "folders or extra things, and never repeat a call with the same arguments. "
@@ -624,7 +629,7 @@ def build_request(req):
     model = req.get("model") or mode.get("model") or STATE["default_model"]
     if model not in MODEL_INFO:
         model = STATE["default_model"]
-    system = mode["system"] + time.strftime("\n\nToday's date: %A, %d %B %Y.")
+    system = mode["system"]
     messages = [dict(m) for m in req.get("messages", [])]
     has_image = any(isinstance(m.get("content"), list) and any(p.get("type") == "image_url" for p in m["content"])
                     for m in messages)
@@ -655,6 +660,15 @@ def build_request(req):
     use_tools = settings["laptop_access"] and not mode.get("rag")
     if use_tools:
         system += "\n\n" + TOOL_GUIDE
+    # The live clock goes with the newest message, not in the system prompt: llama-server reuses the
+    # cached prompt prefix, and a time that changes every minute at the top would re-process it all.
+    if messages and messages[-1].get("role") == "user":
+        stamp = f"[{tools.now_context()}]"
+        last = messages[-1]
+        if isinstance(last.get("content"), list):
+            last["content"] = list(last["content"]) + [{"type": "text", "text": stamp}]
+        else:
+            last["content"] = (last.get("content") or "") + "\n\n" + stamp
     body = {"model": model, "messages": [{"role": "system", "content": system}] + messages, "stream": True,
             "max_tokens": int(req.get("max_tokens") or mode.get("max_tokens", 4096)),
             "timings_per_token": False, **SAMPLING[model]}

@@ -141,6 +141,38 @@ class SettingsAndTools(unittest.TestCase):
         chunk = '{"choices":[{"delta":{"content":"well shit, that is damn hard"}}]}'.encode()
         self.assertEqual(server.filter_chunk(chunk), chunk)  # uncensored: text passes through unchanged
 
+    def test_live_clock_rides_on_the_newest_message(self):
+        """The time must reach the model, but never in the system prompt: that would break prompt caching."""
+        orig = server.tools.now_context
+        msgs = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hey"},
+                {"role": "user", "content": "what time is it?"}]
+        try:
+            server.tools.now_context = lambda: "Right now on this laptop: 10:00"
+            a, _, _ = server.build_request({"mode": "chat", "messages": msgs})
+            server.tools.now_context = lambda: "Right now on this laptop: 10:01"
+            b, _, _ = server.build_request({"mode": "chat", "messages": msgs})
+        finally:
+            server.tools.now_context = orig
+        self.assertEqual(a["messages"][0], b["messages"][0])  # identical system prompt -> cache reuse
+        self.assertNotIn("Right now", a["messages"][0]["content"])
+        self.assertTrue(b["messages"][-1]["content"].endswith("[Right now on this laptop: 10:01]"))
+        self.assertEqual(a["messages"][1:3], [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hey"}])
+        self.assertEqual(msgs[-1]["content"], "what time is it?")  # the caller's history is untouched
+
+    def test_place_names_offline(self):
+        here = server.tools.nearest_place(13.0354, 77.6540)
+        self.assertEqual(here["place"], "Bengaluru, Karnataka, India")
+        self.assertIn("north-east", here["where_in_city"])
+        self.assertIn("near the city centre", server.tools.nearest_place(48.8566, 2.3522)["where_in_city"])
+        self.assertIn("where", server.tools.nearest_place(12.40, 76.50))  # a village: nearest town instead
+
+    def test_new_tools_validate_input(self):
+        self.assertIn("error", server.tools.device_info("registry"))
+        self.assertIn("recent", server.tools.TOOLS["recent_files"]["schema"]["properties"]["folder"]["enum"])
+        self.assertEqual(server.tools.describe("device_info", '{"category": "battery"}'), "Read device details: battery")
+        line = server.tools.now_context()
+        self.assertTrue(line.startswith("Right now on this laptop: ") and "UTC" in line)
+
     def test_tools_are_read_only_and_guarded(self):
         self.assertIn("error", server.tools.run("recent_files", '{"folder": "C:/Windows/System32"}'))
         self.assertIn("error", server.tools.run("delete_files", "{}"))

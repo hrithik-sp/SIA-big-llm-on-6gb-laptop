@@ -1,8 +1,10 @@
 """Laptop tools Sprout's model may call, with the user's permission.
 
 Security model:
-- Every tool is read-only: nothing here writes, deletes, moves, runs or sends anything,
-  and no tool reaches the network.
+- Every tool is read-only: nothing here changes a setting or writes, deletes, moves, runs or
+  sends anything, and Sprout itself never reaches the network. Two notes: the battery report
+  is written by Windows to a temp file that is deleted at once, and Windows' own location
+  service (when location is on) may use its network lookup to find the position.
 - No shell is exposed to the model; each tool is a fixed Python function, and unexpected
   arguments are dropped.
 - Paths go through safe_path(): local drives only (no network, device or stream paths),
@@ -18,6 +20,7 @@ import ctypes
 import datetime as dt
 import fnmatch
 import json
+import math
 import os
 import platform
 import re
@@ -95,6 +98,7 @@ FOLDERS = {  # the only folders a tool may list, chosen by name
     "downloads": "374DE290-123F-4565-9164-39C4925E467B",
     "desktop": "B4BFCC3A-DB2C-424C-B029-7FE99A87C641",
     "documents": "FDD39AD0-238F-46AF-ADB4-6C85480369C7",
+    "recent": "AE50C081-EBD2-438A-8655-8A092E34987A",  # Windows' "recently opened" shortcuts
 }
 
 
@@ -177,6 +181,9 @@ def recent_files(folder="downloads", days=1, limit=25):
             if t >= start:
                 items.append((t, e.name, e.is_dir(), st.st_size))
     items.sort(reverse=True)
+    if folder == "recent":  # shortcuts to what was opened; the shortcut's time is when it was opened
+        items = [(t, n.removesuffix(".lnk"), d, 0) for t, n, d, s in items
+                 if n.lower() not in ("desktop.ini", "automaticdestinations", "customdestinations")]
     return {
         "folder": folder, "since": start.strftime("%Y-%m-%d %H:%M"), "count": len(items),
         "total_size_mb": round(sum(s for *_, s in items) / 2 ** 20, 1),
@@ -289,6 +296,18 @@ def find_files(name, folder="~", limit=40):
             "complete": time.time() - t0 <= 6 and len(found) < limit}
 
 
+def _wifi():
+    """Connected Wi-Fi network and signal (netsh), or None."""
+    try:
+        out = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True, timeout=5,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"^\s*SSID\s*:\s*(.+)$", out, re.M)
+    sig = re.search(r"^\s*Signal\s*:\s*(.+)$", out, re.M)
+    return {"network": m.group(1).strip(), "signal": sig.group(1).strip() if sig else None} if m else None
+
+
 def system_info():
     uname = platform.uname()
     drives = []
@@ -302,15 +321,7 @@ def system_info():
     stats, addrs = psutil.net_if_stats(), psutil.net_if_addrs()
     nets = [{"adapter": n, "up": s.isup, "speed_mbps": s.speed,
              "ipv4": [a.address for a in addrs.get(n, []) if a.family == 2]} for n, s in stats.items() if s.isup]
-    wifi = None
-    try:
-        out = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, text=True, timeout=5,
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
-        m = re.search(r"^\s*SSID\s*:\s*(.+)$", out, re.M)
-        sig = re.search(r"^\s*Signal\s*:\s*(.+)$", out, re.M)
-        wifi = {"network": m.group(1).strip(), "signal": sig.group(1).strip() if sig else None} if m else None
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    wifi = _wifi()
     return {"os": f"{uname.system} {uname.release} (build {uname.version})", "computer": uname.node,
             "cpu": platform.processor(), "cpu_cores": psutil.cpu_count(logical=False), "cpu_threads": psutil.cpu_count(),
             "ram_gb": round(psutil.virtual_memory().total / GiB, 1), "gpu": _gpu(), "drives": drives,
@@ -389,6 +400,148 @@ def clipboard_text():
     return {"chars": len(text), "text": text[:10000]}
 
 
+def _powershell_json(category):
+    out = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(APP / "devices.ps1"),
+                          "-Category", category], capture_output=True, text=True, timeout=40,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+    return json.loads(out or "{}")
+
+
+def _displays():
+    """Resolution and refresh rate of each active display (EnumDisplaySettings)."""
+    class DEVMODE(ctypes.Structure):
+        _fields_ = [("name", ctypes.c_wchar * 32), ("spec", wintypes.WORD), ("drv", wintypes.WORD),
+                    ("size", wintypes.WORD), ("extra", wintypes.WORD), ("fields", wintypes.DWORD),
+                    ("pos", ctypes.c_long * 2), ("orient", wintypes.DWORD), ("fixed", wintypes.DWORD),
+                    ("color", ctypes.c_short), ("duplex", ctypes.c_short), ("yres", ctypes.c_short),
+                    ("tt", ctypes.c_short), ("collate", ctypes.c_short), ("form", ctypes.c_wchar * 32),
+                    ("logpix", wintypes.WORD), ("bits", wintypes.DWORD), ("width", wintypes.DWORD),
+                    ("height", wintypes.DWORD), ("flags", wintypes.DWORD), ("hz", wintypes.DWORD),
+                    ("rest", wintypes.DWORD * 8)]
+
+    class DISPLAY_DEVICE(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("name", ctypes.c_wchar * 32), ("string", ctypes.c_wchar * 128),
+                    ("flags", wintypes.DWORD), ("id", ctypes.c_wchar * 128), ("key", ctypes.c_wchar * 128)]
+    u32, out, i = ctypes.windll.user32, [], 0
+    while True:
+        dd = DISPLAY_DEVICE(cb=ctypes.sizeof(DISPLAY_DEVICE))
+        if not u32.EnumDisplayDevicesW(None, i, ctypes.byref(dd), 0):
+            break
+        i += 1
+        if not dd.flags & 1:  # DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+            continue
+        dm = DEVMODE(size=ctypes.sizeof(DEVMODE))
+        if u32.EnumDisplaySettingsW(dd.name, -1, ctypes.byref(dm)):  # ENUM_CURRENT_SETTINGS
+            out.append({"adapter": dd.string, "resolution": f"{dm.width} x {dm.height}", "refresh_hz": dm.hz,
+                        "primary": bool(dd.flags & 4)})
+    return out
+
+
+DEVICE_CATEGORIES = ("battery", "display", "audio", "bluetooth", "usb", "printers", "startup", "internet", "model")
+
+
+def device_info(category):
+    """Read-only device details: one category per call."""
+    category = str(category or "").lower()
+    if category not in DEVICE_CATEGORIES:
+        return {"error": f"category must be one of {list(DEVICE_CATEGORIES)}"}
+    data = _powershell_json(category)
+    if category == "battery":
+        b = psutil.sensors_battery()
+        if b:
+            data.update(percent=round(b.percent), plugged_in=b.power_plugged)
+            if not b.power_plugged and b.secsleft not in (psutil.POWER_TIME_UNLIMITED, psutil.POWER_TIME_UNKNOWN):
+                data["time_left_min"] = round(b.secsleft / 60)
+        data["note"] = "health = full-charge capacity / design capacity (Windows battery report)"
+    elif category == "internet":
+        data["wifi"] = _wifi()
+    elif category == "display":
+        data["monitors"] = [m.strip("\x00 ") for m in data.get("monitors", []) if m.strip("\x00 ")]
+        data["displays"] = _displays()
+    return data
+
+
+_PLACES = []
+
+
+def _places():
+    if not _PLACES:
+        with open(APP / "data" / "places.tsv", encoding="utf-8") as f:
+            for line in f:
+                if not line.startswith("#"):
+                    n, region, country, lat, lon, pop = line.rstrip("\n").split("\t")
+                    _PLACES.append((n, region, country, float(lat), float(lon), int(pop)))
+    return _PLACES
+
+
+def _km(lat1, lon1, lat2, lon2):
+    a = (math.sin(math.radians(lat2 - lat1) / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 6371 * 2 * math.asin(math.sqrt(a))
+
+
+def _direction(lat1, lon1, lat2, lon2):
+    """Compass direction from point 1 to point 2."""
+    y = math.sin(math.radians(lon2 - lon1)) * math.cos(math.radians(lat2))
+    x = (math.cos(math.radians(lat1)) * math.sin(math.radians(lat2)) -
+         math.sin(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.cos(math.radians(lon2 - lon1)))
+    return ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"][
+        round(math.degrees(math.atan2(y, x)) % 360 / 45) % 8]
+
+
+def nearest_place(lat, lon):
+    """Name a position offline (GeoNames): inside a city of 1M+ (within 25 km of its centre) the city
+    with direction and distance from its centre, otherwise the nearest town."""
+    rows = [(_km(lat, lon, r[3], r[4]), r) for r in _places() if abs(r[3] - lat) < 3 and abs(r[4] - lon) < 3]
+    if not rows:
+        rows = [(_km(lat, lon, r[3], r[4]), r) for r in _places()]
+    d, r = min(rows)
+    big = [(dd, rr) for dd, rr in rows if rr[5] >= 1_000_000 and dd <= 25]
+    if big:
+        dd, rr = min(big)
+        where = ("near the city centre" if dd < 1.5 else
+                 f"about {round(dd)} km {_direction(rr[3], rr[4], lat, lon)} of the city centre")
+        return {"place": f"{rr[0]}, {rr[1]}, {rr[2]}", "where_in_city": where}
+    return {"place": f"{r[0]}, {r[1]}, {r[2]}",
+            "where": f"about {round(d)} km {_direction(r[3], r[4], lat, lon)} of {r[0]}"}
+
+
+def region_and_timezone():
+    """Windows' home region and the time zone (both offline settings)."""
+    region = None
+    if os.name == "nt":
+        k32 = ctypes.windll.kernel32
+        buf = ctypes.create_unicode_buffer(128)
+        if k32.GetGeoInfoW(k32.GetUserGeoID(16), 8, buf, 128, 0):  # GEOCLASS_NATION, GEO_FRIENDLYNAME
+            region = buf.value
+    off = time.strftime("%z")
+    return {"windows_region": region, "time_zone": time.tzname[time.localtime().tm_isdst],
+            "utc_offset": f"{off[:3]}:{off[3:]}" if len(off) == 5 else off}
+
+
+def location():
+    """Where the laptop is: Windows location (if on) named offline, plus region and time zone."""
+    out = region_and_timezone()
+    pos = _powershell_json("location")
+    if "lat" in pos:
+        out.update(latitude=round(pos["lat"], 4), longitude=round(pos["lon"], 4), accuracy_m=pos.get("accuracy_m"))
+        out.update(nearest_place(pos["lat"], pos["lon"]))
+        out["source"] = "Windows location service; place names from GeoNames (offline)"
+    else:
+        out["position"] = (f"unavailable (Windows location status: {pos.get('status')}, permission: "
+                           f"{pos.get('permission')}). Turn on Settings > Privacy & security > Location.")
+    return out
+
+
+def now_context():
+    """One line for every request: the laptop's current date, time, time zone and region."""
+    rt, now = region_and_timezone(), dt.datetime.now()
+    clock = now.strftime("%I:%M %p").lstrip("0")
+    region = f" Windows region: {rt['windows_region']}." if rt["windows_region"] else ""
+    return (f"Right now on this laptop: {now:%A, %d %B %Y}, {now:%H:%M} ({clock}), "
+            f"{rt['time_zone']} (UTC{rt['utc_offset']}).{region}")
+
+
 # --------------------------------------------------------------------------- registry
 TOOLS = {
     "system_vitals": {
@@ -407,14 +560,16 @@ TOOLS = {
     },
     "recent_files": {
         "fn": recent_files, "label": "List recent files",
-        "reads": "names, sizes and times of recent files in one of: Downloads, Desktop, Documents",
+        "reads": "names, sizes and times of recent files in Downloads, Desktop or Documents, or recently opened files",
         "schema": {"type": "object", "properties": {
-            "folder": {"type": "string", "enum": sorted(FOLDERS), "description": "which folder"},
+            "folder": {"type": "string", "enum": sorted(FOLDERS),
+                       "description": "which folder; 'recent' = files the user recently opened anywhere"},
             "days": {"type": "number", "description": "how far back: 1 = today, 7 = this week"},
             "limit": {"type": "integer", "description": "max items to list (1-50)"}},
             "required": ["folder"]},
         "description": "List files added or changed recently in the user's Downloads, Desktop or Documents "
-                       "folder (e.g. 'what did I download today').",
+                       "folder (e.g. 'what did I download today'), or with folder='recent' the files the user "
+                       "recently opened anywhere (e.g. 'what did I open recently').",
     },
     "running_apps": {
         "fn": running_apps, "label": "List open apps",
@@ -468,6 +623,27 @@ TOOLS = {
             "filter": {"type": "string", "description": "optional: only names containing this"}}},
         "description": "List the programs installed on the laptop (optionally filtered by name).",
     },
+    "device_info": {
+        "fn": device_info, "label": "Read device details",
+        "reads": "one kind of device detail: battery health, display, audio, Bluetooth, USB, printers, startup apps, "
+                 "internet connection or laptop model",
+        "schema": {"type": "object", "properties": {
+            "category": {"type": "string", "enum": list(DEVICE_CATEGORIES),
+                         "description": "battery (health, capacity, time left), display (resolution, refresh rate, "
+                                        "brightness), audio (volume, mute, devices), bluetooth (paired devices, "
+                                        "connected or not), usb (connected devices), printers, startup (apps that "
+                                        "start with Windows), internet (online or not, Wi-Fi name and signal, IP, gateway), model (laptop "
+                                        "maker, model, BIOS)"}},
+            "required": ["category"]},
+        "description": "Read details about the laptop's devices and settings, one category per call.",
+    },
+    "location": {
+        "fn": location, "label": "Check location",
+        "reads": "the laptop's position from Windows location (named offline), its region and time zone",
+        "schema": {"type": "object", "properties": {}},
+        "description": "Where the laptop is right now: nearest town and city, coordinates and accuracy (from "
+                       "Windows location), plus the Windows region and time zone.",
+    },
     "clipboard_text": {
         "fn": clipboard_text, "label": "Read the clipboard",
         "reads": "the text currently copied to the clipboard",
@@ -515,4 +691,6 @@ def describe(name, args_json):
         extra = f": {args.get('path', '?')}"
     if name == "find_files":
         extra = f" named '{args.get('name', '?')}' in {args.get('folder', '~')}"
+    if name == "device_info":
+        extra = f": {args.get('category', '?')}"
     return t["label"] + extra

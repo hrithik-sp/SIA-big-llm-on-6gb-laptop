@@ -90,7 +90,7 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
 </table>
 
 The full story, including the wrong turns and how each was caught, is in
-**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 26 problems with how
+**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 29 problems with how
 each was solved.
 
 ## Sprout
@@ -104,7 +104,8 @@ A one-click desktop app built on these results:
   per-server keys.
 - **Light:** it starts hidden, uses 177 MB without a model, opens in ~0.1 s with
   `Ctrl+Alt+Space`, and frees the model after 10 idle minutes.
-- **Read-only laptop access,** with a permission card for every call and secret locations
+- **Knows your laptop:** the time, where you are, battery health, screen, sound, Bluetooth,
+  files and apps, read-only, with a permission card for every call and secret locations
   blocked.
 
 → **[Sprout guide: features, install, security model](docs/SPROUT.md)**
@@ -116,12 +117,12 @@ A one-click desktop app built on these results:
 | Path | Contents |
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (54 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (55 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
 | `app/` | Sprout (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 57 unit tests |
+| `tests/` | 60 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -129,7 +130,7 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 57 tests, no GPU or models needed
+python -m unittest discover tests          # 60 tests, no GPU or models needed
 ```
 
 - **Run Sprout:** build llama.cpp, download the five model files, run `app\install.ps1`.

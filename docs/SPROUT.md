@@ -33,9 +33,14 @@ from a fresh test profile; the worked example was checked by hand).*
 - Tiny live vitals (CPU, RAM, GPU temperature, VRAM) and a status panel with
   "Free memory now".
 
+**It knows the time.** Every request carries the laptop's current date, time, time zone and
+region, so "what time is it?" is answered from the clock, never guessed.
+
 **Read-only laptop access, with permission.** When you ask about your laptop, the model can
-call read-only tools: system vitals and info, open browser tabs, running apps and processes,
-installed apps, clipboard text, recent files, and listing, searching and reading files
+call read-only tools: location (Windows location, named offline), device details (battery
+health, display and brightness, volume, Bluetooth, USB, printers, startup apps, internet
+connection, laptop model), system vitals and info, open browser tabs, running apps and processes,
+installed apps, clipboard text, recent and recently opened files, and listing, searching and reading files
 (text, PDF, Word). Every call shows a card with the exact path: **Allow once**, **Always
 allow** or **Deny**.
 
@@ -93,6 +98,12 @@ review. Its protections:
   data and `.env` files (unit-tested).
 - **Untrusted file contents:** the model is told to treat file contents as data, not
   instructions.
+- **No guessing:** the model is told never to state a laptop fact (time, place, hardware,
+  settings, files) that isn't in a tool result; it calls the tool or says it can't see it.
+- **Location** comes from Windows' own location service, and only when that is turned on
+  (Settings > Privacy & security > Location). Sprout names the place from a built-in GeoNames
+  list and sends nothing anywhere; Windows itself may use its network lookup to find the
+  position.
 
 **Content:** Sprout adds no extra content filter. Its prompts ask the models to answer frankly,
 without moralising or disclaimers. The models' own safety training still applies. This was
@@ -135,7 +146,8 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 57 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 60 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
-| `python tools\sprout_tools_check.py` | Tool use with real models, including a denied call (finding 45) |
+| `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
+| `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |
 | `python tools\sprout_window_check.py` | The standalone window: hidden start, ~0.1 s show, close-to-hide, single instance, memory and a clean quit (9/9, finding 52) |

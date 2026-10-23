@@ -2,6 +2,7 @@
 tool, does the permission flow work (approve and deny), and does the answer use the result?
 
   python tools/sprout_tools_check.py
+  python tools/sprout_tools_check.py "What time is it?" "Where am I?"   (your own questions, all approved)
 Starts Sprout without a window on a temporary settings file (laptop access on, nothing
 always-allowed), then quits it. The user's own settings are untouched.
 """
@@ -74,6 +75,8 @@ def main():
         ("chat", "What's my GPU temperature?", None, "deny"),
         ("think", "How much free space is on my C drive?", "gptoss", "once"),
     ]
+    if len(sys.argv) > 1:
+        tests = [("chat", q, None, "once") for q in sys.argv[1:]]
     try:
         for mode, q, model, decide in tests:
             a, ev, s = chat(mode, q, model, decide)

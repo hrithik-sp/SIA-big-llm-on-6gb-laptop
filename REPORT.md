@@ -289,6 +289,14 @@ The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I foun
   model loaded (finding 52).
 - **A hidden window woke the model in the background.** Fixed and tested: no model loads until the
   window is shown.
+- **It invented facts it couldn't see.** Asked the time, it made one up; asked the screen
+  resolution, it guessed. I gave every request the live clock, added location and device tools,
+  and a rule against guessing. Ten everyday laptop questions went from 3 to 10 answered
+  correctly (finding 55).
+- **The live clock first broke prompt caching** (one line that changed every minute, at the top
+  of the prompt): replies in a real chat took 12–16 s. With the clock moved to the newest message,
+  a six-turn test re-processes only the new message and shows the first word in 2–3 s
+  (finding 55).
 
 ### Step 9: final audit
 
@@ -492,6 +500,9 @@ Full commands: lab notebook, "Recommended settings".
 | 24 | RAM-aware default counted Sprout's own model | Gemma would swap itself out | Count own model as available + tests | 54 |
 | 25 | A test read the real GPU | Would fail on machines without one | Fixed GPU reading in the test, plus a no-GPU case | final audit |
 | 26 | Power cut during a measurement | One run on battery | Marked invalid, rerun on AC | 49 |
+| 27 | Sprout invented the time and a screen resolution | Plausible but unsourced answers | Live clock with every request; location and device tools; no-guessing rule | 55 |
+| 28 | A changing clock line at the top of the prompt | 12–16 s replies (cache re-processed) | Clock moved to the newest message; unit test keeps the prompt stable | 55 |
+| 29 | A volume probe declared Windows' audio interface wrongly | One read called SetMute | Speakers restored; full interface in documented order, getters only | 55 |
 
 ---
 

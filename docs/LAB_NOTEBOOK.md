@@ -1202,6 +1202,50 @@ Goal: Sprout separate from Edge, quick and smooth.
       (`choose_default_model`). Two regression tests (`DefaultModel` in
       `tests/test_sprout.py`). Retaken screenshots show "Gemma 4 26B (QAT) ready".
 
+55. **Sprout couldn't tell the time or its location, and invented answers instead.**
+    - **Test:** ten everyday laptop questions with the real model, before and after
+      (`tools/sprout_tools_check.py "question" ...`).
+
+      | Question | Before | After |
+      |---|---|---|
+      | What time is it? | **invented** ("10:42 AM") | correct, from the laptop's clock |
+      | Today's date | correct | correct |
+      | Where am I? Which city? | "I can't tell" | "Bengaluru, Karnataka" (Windows location, named offline) |
+      | Battery health, time left | only the charge % | 75% health (design 70.1 Wh, now 52.8 Wh); no time left while plugged in |
+      | Bluetooth devices | "no way to check" | none connected; three paired devices listed |
+      | Recently opened files | checked three wrong folders | Windows' recently-opened list |
+      | Internet connected? | guessed from Wi-Fi | checked (Windows network status) |
+      | Resolution, brightness | resolution **invented**, brightness unknown | 1920 × 1080 at 144 Hz, brightness as Windows reports it |
+      | Wi-Fi name | correct | correct |
+      | Top CPU user | correct | correct |
+    - **Causes:** the model was given only the date, and no tool covered location or devices.
+      Without them it filled gaps with plausible guesses.
+    - **Fixes:**
+      - Each request carries the laptop's current date, time, time zone and Windows region.
+      - New `location` tool: Windows location (±130–150 m here), named offline with GeoNames
+        (34,179 places, CC BY 4.0). Inside a city of 1M+ it gives the city and the direction and
+        distance from its centre.
+      - New `device_info` tool, one category per call: battery (Windows battery report), display,
+        audio, Bluetooth, USB, printers, startup apps, internet, model.
+      - `recent_files` can list recently opened files.
+      - The tool guide forbids guessing laptop facts: call the tool that has the fact, or say it
+        can't be seen.
+    - **A regression caught on the way: the clock broke prompt caching.** The first version put
+      the time at the top of the system prompt. llama-server reuses a cached prompt prefix, and a
+      line that changes every minute made it re-process the whole conversation (~2,000 tokens)
+      about once a minute: 12–16 s replies in a real chat. The time now goes at the end of the
+      newest message. Measured over six turns crossing a minute boundary
+      (`tools/sprout_latency_check.py`):
+      - only 87–119 new tokens are processed per turn, with ~1,900–2,000 reused;
+      - the first word arrives in 2–3 s (10.5 s for a turn that reads the battery);
+      - a unit test keeps the system prompt identical over time.
+    - **A mistake caught while building it.** A read-only probe of the speaker volume declared
+      Windows' audio interface with one method missing. Its "read mute" call therefore landed on
+      **SetMute** and muted the speakers. This was noticed when re-checking the interface layout
+      against Windows' documented order, and the speakers were restored (50%, unmuted). The
+      shipped script declares the full interface in documented order and calls only the two
+      getters; two consecutive reads confirm they change nothing.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
@@ -1296,9 +1340,9 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
 | `tools/build_llama.ps1` | CUDA sm_86 + AVX-512 (VNNI/VBMI) build; parallel jobs sized to free RAM |
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
-| `tests/` | 57 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
+| `tests/` | 60 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
-| `tools/sprout_tools_check.py`, `tools/sprout_window_check.py` | Sprout tool use with real models (finding 45); the standalone window (finding 52) |
+| `tools/sprout_tools_check.py`, `tools/sprout_window_check.py`, `tools/sprout_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
 | `tools/hash_models.py` | SHA-256 of every model file, compared with Hugging Face's published hash at the pinned revision → `results/model_files.json` |
 
 Large files live outside OneDrive in `C:\Users\sphri\llm`: `llama.cpp\`
@@ -1354,7 +1398,7 @@ git apply <this repo>\patches\llama-bench-moe-cache-mib.patch       # llama-benc
 git apply <this repo>\patches\llama-perplexity-parse-special.patch  # chat-corpus KLD (finding 30)
 cd <this repo>
 powershell -ExecutionPolicy Bypass -File tools\build_llama.ps1       # CUDA sm_86, AVX-512 VNNI/VBMI, BF16 off
-python -m unittest discover tests                                    # 57 tests
+python -m unittest discover tests                                    # 60 tests
 ```
 
 **3. Models and data.** `fetch_model.ps1` checks every file against the SHA-256 that
