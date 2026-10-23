@@ -300,6 +300,9 @@ The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I foun
   - one-call file search over the personal folders;
   - a game referee that the model is required to use;
   - short automatic reasoning for questions with numbers.
+- **A wider daily-use test found ten more problems** (finding 57). The worst: claiming searches it
+  never ran, a guess submitted on the user's behalf, and long chats failing outright. All were fixed and re-tested: the final full run
+  passed 32 of 33 everyday requests, and its one failure (a made-up game guess) was then fixed.
 - **The live clock first broke prompt caching** (one line that changed every minute, at the top
   of the prompt): replies in a real chat took 12–16 s. With the clock moved to the newest message,
   a six-turn test re-processes only the new message and shows the first word in 2–3 s
@@ -513,6 +516,9 @@ Full commands: lab notebook, "Recommended settings".
 | 30 | The tool loop could end with an empty reply | Answer blank after the last tool round | Final pass without tools | 56 |
 | 31 | The model can't keep a secret word between turns | Contradictory Wordle feedback, wrong Hangman boards | A game referee in code; game moves require a tool call | 56 |
 | 32 | Arithmetic answered without working | 4:40 or 4:50 stated instead of 4:35 in some runs | Automatic short reasoning (320-token budget) for questions that need it | 56 |
+| 33 | Sprout claimed searches and checks it never ran | "I checked your recent files" with no tool call | Honesty rules plus a reminder on the newest message: 0 of 15 invented afterwards | 57 |
+| 34 | Long chats were rejected beyond 16,384 tokens | "request (37,287 tokens) exceeds the available context size" | Oldest messages left out in blocks; exact-count retry; a clear message when one message is too long | 57 |
+| 35 | The model couldn't see a running game | Restarted the game on the first guess | Game state on the newest message; "start" keeps a running game | 57 |
 
 ---
 

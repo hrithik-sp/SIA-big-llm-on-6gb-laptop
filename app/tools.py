@@ -159,8 +159,14 @@ def browser_tabs(include_titles=False):
         if not include_titles:
             b.pop("titles", None)
     total = sum(b["tabs"] for b in data.values())
-    return {"total_tabs": total, "by_browser": data,
-            "note": "Counts tabs in open, visible browser windows."}
+    out = {"total_tabs": total, "by_browser": data, "note": "Counts tabs in open, visible browser windows."}
+    names = {"chrome.exe": "Chrome", "msedge.exe": "Edge", "firefox.exe": "Firefox", "brave.exe": "Brave"}
+    running = sorted({names[p.info["name"].lower()] for p in psutil.process_iter(["name"])
+                      if (p.info["name"] or "").lower() in names})
+    hidden = [b for b in running if b not in data]
+    if hidden:  # e.g. Chrome keeps running after its last window closes
+        out["running_without_windows"] = hidden
+    return out
 
 
 def recent_files(folder="downloads", days=1, limit=25):
@@ -560,6 +566,30 @@ def location():
     return out
 
 
+def laptop_summary():
+    """One line describing this laptop (maker, model, CPU, GPU, RAM), from the registry and nvidia-smi."""
+    parts = []
+    if os.name == "nt":
+        import winreg
+
+        def reg(path, name):
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as k:
+                    return str(winreg.QueryValueEx(k, name)[0]).strip()
+            except OSError:
+                return ""
+        maker = reg(r"HARDWARE\DESCRIPTION\System\BIOS", "SystemManufacturer")
+        model = reg(r"HARDWARE\DESCRIPTION\System\BIOS", "SystemProductName")
+        cpu = reg(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString")
+        parts += [p for p in (" ".join(x for x in (maker, model) if x), cpu) if p]
+    gpu = _gpu()
+    if gpu:
+        parts.append(gpu["name"] if "GB" in gpu["name"] else f"{gpu['name']} {gpu['vram_total_gb']:.0f} GB")
+    nominal = 2 ** round(math.log2(psutil.virtual_memory().total / GiB))  # 15.3 GiB usable = a 16 GB laptop
+    parts.append(f"{nominal} GB RAM")
+    return ", ".join(parts)
+
+
 def now_context():
     """One line for every request: the laptop's current date, time, time zone and region."""
     rt, now = region_and_timezone(), dt.datetime.now()
@@ -678,13 +708,17 @@ TOOLS = {
         "fn": games.word_game, "label": "Word game", "auto": True,  # reads nothing from the laptop: no permission card
         "reads": "nothing from the laptop (Sprout's own game engine)",
         "schema": {"type": "object", "properties": {
-            "action": {"type": "string", "enum": ["start", "guess", "hint", "reveal"]},
+            "action": {"type": "string", "enum": ["start", "guess", "hint", "reveal"],
+                       "description": "start: begin a game (a running one continues unless new=true); guess: score "
+                                      "the user's guess; hint: when the user asks for a hint; reveal: only when the "
+                                      "user gives up or asks for the word"},
             "game": {"type": "string", "enum": ["wordle", "hangman"], "description": "for start"},
-            "guess": {"type": "string", "description": "for guess: the user's word (Wordle) or letter/word (Hangman)"}},
+            "guess": {"type": "string", "description": "for guess: the user's word (Wordle) or letter/word (Hangman)"},
+            "new": {"type": "boolean", "description": "for start: true only if the user asked for a fresh game"}},
             "required": ["action"]},
         "description": "Referee for Wordle and Hangman: it picks and keeps the secret word and scores every guess. "
-                       "Start a game with it, pass every guess of the user to it, and report its feedback exactly; "
-                       "never invent feedback or a secret word. Use reveal only if the user gives up or asks.",
+                       "Pass every move of the user to it, then tell the user its 'summary' in full (every letter's "
+                       "result, the board, what's left); never invent feedback or a secret word.",
     },
     "clipboard_text": {
         "fn": clipboard_text, "label": "Read the clipboard",
@@ -695,9 +729,9 @@ TOOLS = {
 }
 
 
-def openai_tools():
+def openai_tools(names=None):
     return [{"type": "function", "function": {"name": n, "description": t["description"], "parameters": t["schema"]}}
-            for n, t in TOOLS.items()]
+            for n, t in TOOLS.items() if names is None or n in names]
 
 
 def run(name, args_json):

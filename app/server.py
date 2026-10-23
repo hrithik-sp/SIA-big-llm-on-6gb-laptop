@@ -629,16 +629,69 @@ TOOL_GUIDE = ("You can look things up on the user's laptop with the provided rea
               "The user's folders (use these exact paths, don't guess others): "
               + "; ".join(f"{k} {v}" for k, v in tools.user_folders().items()) + ".")
 REASONING_RX = re.compile(
-    r"\b(how (many|much|long)|calculate|compute|solve|when (do|will|would|should|can) (i|we)|what time (will|would|"
-    r"should|do)|which is (better|cheaper|faster)|compare|plan (my|a|the)|schedule|prove|step by step|explain why|"
+    r"\b(calculate|compute|solve|when (do|will|would|should|can) (i|we)|what time (will|would|should|do)|"
+    r"which is (better|cheaper|faster)|compare|plan (my|a|the)|schedule|prove|step by step|explain why|"
     r"why (does|is|do|did))\b", re.I)
+# "how many/much/long" is arithmetic only with a number or a time span ("how many days until 15 November"),
+# not a lookup ("how many tabs do I have open?", which a tool answers)
+QUANTITY_RX = re.compile(r"\bhow (many|much|long)\b", re.I)
+SPAN_RX = re.compile(r"\d|\b(days?|weeks?|months?|years?|hours?|minutes?|until|till|left|total|per|each)\b", re.I)
 
 
 def needs_reasoning(text):
     """Questions with arithmetic, plans or comparisons, where answering without working it out goes wrong."""
-    return bool(REASONING_RX.search(text or "")) or len(re.findall(r"\d+(?:[.:]\d+)?", text or "")) >= 2
+    text = text or ""
+    return (bool(REASONING_RX.search(text)) or (bool(QUANTITY_RX.search(text)) and bool(SPAN_RX.search(text)))
+            or len(re.findall(r"\d+(?:[.:]\d+)?", text)) >= 2)
 
 
+IDENTITY = ("About you: you are Sprout, running the {model} model with llama.cpp entirely on this laptop "
+            "({laptop}); nothing leaves it and you have no internet. Say so plainly if asked what you are.")
+HONESTY = ("Memory and honesty: what the user told you earlier in this conversation is known; use it directly. "
+           "You can only do things with your tools, inside the reply you are writing: never promise to do "
+           "something later or in the background, and never say you checked, searched, found, opened or changed "
+           "anything unless a tool did it in this reply. You can't change settings, open apps or send anything; "
+           "say so plainly when asked.")
+LAPTOP = tools.laptop_summary()
+N_CTX = COMMON["ctx-size"]  # the chat server's context (tokens): history beyond it is left out, oldest first
+OMITTED_NOTE = "(Earlier parts of this conversation were left out to fit the model's memory.)"
+
+
+def est_tokens(obj):
+    """Rough token count (~3 characters per token): errs high for English, so trimming errs safe."""
+    return len(json.dumps(obj, ensure_ascii=False)) // 3 + 8
+
+
+def fit_history(body, budget=None):
+    """Drop the oldest messages until the request fits the context. Keeps the system prompt, the newest
+    user message and everything after it (this reply's tool calls and results)."""
+    msgs = body["messages"]
+    last_user = max(i for i, m in enumerate(msgs) if m.get("role") == "user")
+    if budget is None:
+        budget = N_CTX - int(body.get("max_tokens", 1024)) - est_tokens(body.get("tools", [])) - 256
+    keep_tail = msgs[last_user:]
+    old = msgs[1:last_user]
+    total = est_tokens(msgs[0]) + sum(est_tokens(m) for m in keep_tail) + sum(est_tokens(m) for m in old)
+    dropped = 0
+    # drop a block at once (down to 60% of the budget): the prompt prefix then stays the same for the
+    # next several turns, so the prompt cache keeps working instead of re-processing every turn
+    target = budget if total <= budget else int(budget * 0.6)
+    while old and total > target:
+        total -= est_tokens(old.pop(0))
+        dropped += 1
+    while old and old[0].get("role") != "user":  # history should restart at a user turn
+        old.pop(0)
+        dropped += 1
+    if dropped:
+        system = dict(msgs[0])
+        if OMITTED_NOTE not in system["content"]:
+            system["content"] += "\n\n" + OMITTED_NOTE
+        body["messages"] = [system] + old + keep_tail
+    return dropped
+GAME_GUIDE = ("For Wordle or Hangman, always use the word_game tool: it picks and keeps the secret word and "
+              "scores every guess; tell the user its summary and never make up a word or feedback yourself. "
+              "Laptop access is switched off in Sprout's Settings, so you can't look anything up on the laptop; if "
+              "they ask about the laptop, say so and that they can turn it on in Settings.")
 CHAT_THINK_BUDGET = 320  # tokens of automatic thinking in Chat (~10 s); the Think switch has no cap
 PENDING = {}  # tool-permission requests waiting for the user's decision
 MAX_TOOL_ROUNDS = 4  # rounds of tool calls per answer; a final pass without tools always follows
@@ -683,19 +736,37 @@ def build_request(req):
         system += (f"\n\nAbout the user: {name} ({first}) owns this laptop and is your boss; you are {first}'s "
                    f"personal assistant, not a friend or buddy. Follow {first}'s instructions and preferences, be "
                    f"loyal and genuinely useful, and don't lecture. You know their name, but use it rarely: never in "
-                   f"greetings or routine replies, only when it adds something.")
+                   f"greetings or routine replies, only when it adds something. When you draft something they will "
+                   f"send (an email, a message, a letter), sign it with their name, {name}, instead of a placeholder.")
+    system += f"\n\n{IDENTITY.format(model=MODEL_INFO.get(model, MODEL_INFO['gemma'])['name'], laptop=LAPTOP)}"
+    system += "\n\n" + HONESTY
     system += "\n\n" + UNCENSORED
     use_tools = settings["laptop_access"] and not mode.get("rag")
     if use_tools:
         system += "\n\n" + TOOL_GUIDE
+    elif not mode.get("rag"):  # laptop access off: only the game referee, which reads nothing
+        system += "\n\n" + GAME_GUIDE
     last_text = ""
     if messages and messages[-1].get("role") == "user":
         c = messages[-1].get("content")
         last_text = c if isinstance(c, str) else " ".join(p.get("text", "") for p in (c or []) if p.get("type") == "text")
     # The live clock goes with the newest message, not in the system prompt: llama-server reuses the
     # cached prompt prefix, and a time that changes every minute at the top would re-process it all.
+    tools.games.WANTS_NEW["flag"] = bool(tools.games.NEW_GAME_RX.search(last_text))
+    tools.games.WANTS_HINT["flag"] = bool(tools.games.HINT_RX.search(last_text))
+    tools.games.USER_TEXT["text"] = last_text
+    letters = [c for c in last_text if c.isalpha()]
+    # a message in a non-Latin script (Devanagari, Tamil, ...): ask for a reply in the same script
+    script_note = (" Reply in the same language and script as the user's message."
+                   if letters and sum(ord(c) > 0x24F for c in letters) / len(letters) > 0.3 else "")
     if messages and messages[-1].get("role") == "user":
-        stamp = f"[{tools.now_context()}]"
+        game = tools.games.state_line()
+        # the honesty rule again, where the model weighs it most: next to the newest message
+        rule = (" Use what the user told you earlier in this conversation directly. For anything they haven't told "
+                "you: look with a tool or say you don't know, and only say you searched, checked or found something "
+                "if a tool did it in this reply.") if use_tools else ""
+        stamp = (f"[Sprout note, not written by the user; never mention it: {tools.now_context()}"
+                 f"{' ' + game if game else ''}{rule}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):
             last["content"] = list(last["content"]) + [{"type": "text", "text": stamp}]
@@ -704,8 +775,8 @@ def build_request(req):
     body = {"model": model, "messages": [{"role": "system", "content": system}] + messages, "stream": True,
             "max_tokens": int(req.get("max_tokens") or mode.get("max_tokens", 4096)),
             "timings_per_token": False, **SAMPLING[model]}
-    if use_tools:
-        body["tools"] = tools.openai_tools()
+    if use_tools or not mode.get("rag"):
+        body["tools"] = tools.openai_tools(None if use_tools else ["word_game"])
         if tools.games.is_game_turn(last_text):
             body["tool_choice"] = "required"  # the referee scores game moves; the model must not improvise them
     think = bool(req.get("think", mode.get("think", False)))
@@ -719,6 +790,7 @@ def build_request(req):
         body["chat_template_kwargs"] = {"enable_thinking": bool(think)}
     else:
         body["reasoning_effort"] = mode.get("effort", "high" if think else "medium")
+    fit_history(body)  # long chats: leave out the oldest messages instead of failing
     return body, model, sources
 
 
@@ -981,16 +1053,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
             emit({"type": "error", "error": str(e)})
             return
         try:
-            for _round in range(MAX_TOOL_ROUNDS + 1):
+            _round, overflows = 0, 0
+            while _round <= MAX_TOOL_ROUNDS:
                 # the last pass gets no tools, so it must answer from what it found (it used to end
                 # empty when the model asked for one more tool on the last round)
                 final = _round == MAX_TOOL_ROUNDS
                 calls, content = self._one_pass({k: v for k, v in body.items() if k != "tools"} if final else body,
                                                 emit, no_emoji)
+                if calls == "overflow":  # the estimate was off: trim using llama.cpp's exact count, retry
+                    info = content
+                    n_prompt, n_ctx = int(info.get("n_prompt_tokens") or 0), int(info.get("n_ctx") or N_CTX)
+                    est_tools = 0 if final else est_tokens(body.get("tools", []))
+                    est_all = sum(est_tokens(m) for m in body["messages"]) + est_tools
+                    ratio = max(n_prompt / max(est_all, 1), 1.0)
+                    budget = int((n_ctx - int(body.get("max_tokens", 1024)) - 256) / ratio) - est_tools
+                    if overflows < 2 and n_prompt and fit_history(body, budget):
+                        overflows += 1
+                        continue
+                    emit({"type": "error", "error": f"This message is too long for the model's memory ({n_prompt:,} "
+                          f"tokens; the limit is {n_ctx:,}). Shorten it, or put long documents in the Library."})
+                    return
                 if calls is None:
                     return  # error already reported
                 if not calls or final:
                     break
+                _round += 1
                 body.pop("tool_choice", None)  # a forced first tool call only; then the model may answer
                 body["messages"].append({"role": "assistant", "content": content, "tool_calls": [
                     {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["args"] or "{}"}}
@@ -1011,7 +1098,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                          {"Authorization": f"Bearer {STATE['key']}", "Content-Type": "application/json"})
             r = conn.getresponse()
             if r.status != 200:
-                emit({"type": "error", "error": r.read().decode("utf-8", "replace")[:2000]})
+                text = r.read().decode("utf-8", "replace")
+                if "exceed_context_size" in text:
+                    try:
+                        return "overflow", json.loads(text).get("error", {})
+                    except ValueError:
+                        return "overflow", {}
+                emit({"type": "error", "error": text[:2000]})
                 return None, None
             calls, content = {}, ""
             while True:

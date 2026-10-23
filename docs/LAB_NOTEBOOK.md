@@ -1305,6 +1305,38 @@ Goal: Sprout separate from Edge, quick and smooth.
       measured quality; these fixes change what the model is told, what it can look up, and when
       it reasons.
 
+57. **A daily-use test found eleven more problems; all fixed.**
+    - **Test:** `tools/sprout_daily_check.py`, 33 realistic requests with the real models:
+      - Chat: memory, Hinglish, Hindi script, identity, long explanations, code, date and unit
+        maths, knowledge, news it can't know, a rude message;
+      - laptop: disk space checked against the real value, startup apps, temperature, reading a
+        file, tabs, finding files, two lookups at once, a request for saved passwords;
+      - limits: actions it can't take, a ~35,000-token chat, a ~99,000-token paste;
+      - games, a switch from Think deep back to Chat, and one request each in Study, Code and
+        Write.
+
+      Every reply was also read, not only scored. The first round scored 19/22, and the final run
+      scores **32/33**; its one failure (a made-up game guess) was then fixed, and that scenario passed 2 of 2
+      re-runs. The end-to-end check of every mode (12/12) and the window check (9/9)
+      still pass; the behaviour check scored 8/8 in seven runs in a row, then 7/8 once on a borderline flag (an offer made
+      after the search had finished).
+    - **What was wrong, and the fix:**
+
+      | Problem (seen in the transcripts) | Fix |
+      |---|---|
+      | Claimed actions it never took: "I'll start searching… I'll let you know", "I checked your recent files", with no tool called; in a fresh chat it described a search it never ran | Honesty rules in every prompt, and a short reminder in the note on the newest message, where the model weighs it most. Afterwards: **0 of 15** invented searches (5 personal questions × 3); it searches for real or says it doesn't know |
+      | Forgot what the user said earlier ("my exam is on Monday" → "I don't have access to your calendar") | "What the user told you is known"; the first reminder wording over-corrected (it searched instead of remembering) and was reworded: memory 3/3 |
+      | Didn't know what it is ("I'm an AI.") | An identity line: model, llama.cpp, and the laptop's maker, CPU, GPU and RAM read from Windows |
+      | Games: restarted on the first guess, a hint restarted the game, "play again" was reported but not done, feedback partly relayed | The model never sees its earlier tool calls, so the newest message now carries the game's state; "start" keeps a running game; "play again" is detected by Sprout itself; the referee returns a one-line summary to relay |
+      | Long chats failed: "request (37,287 tokens) exceeds the available context size (16,384)" | The oldest messages are left out, in one block down to 60% of the budget so the prompt cache keeps working; on an overflow it retries using llama.cpp's exact count; a single message that's too long gets a clear explanation |
+      | Drafts signed "[Your Name]" | Drafts are signed with the owner's name |
+      | "How many tabs do I have open?" switched on 10 s of thinking | "how many/much/long" counts as arithmetic only with a number or a time span |
+      | With laptop access off, games lost their referee | The referee stays (it reads nothing), and laptop questions get "laptop access is off; turn it on in Settings" |
+      | "I've got the system time and your location noted": the clock note was taken for the user's words | The note says it comes from Sprout and isn't to be mentioned |
+      | "No tabs open" while Chrome ran with no windows | The tool reports browsers running without windows |
+      | After the user typed "ok", the model submitted the guess "GUESS" for them, costing a turn | The referee only accepts a guess that appears in the user's newest message |
+      | A question in Devanagari got an English reply | A message in a non-Latin script gets an explicit "reply in the same language and script" |
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
@@ -1399,9 +1431,10 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
 | `tools/build_llama.ps1` | CUDA sm_86 + AVX-512 (VNNI/VBMI) build; parallel jobs sized to free RAM |
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
-| `tests/` | 65 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
+| `tests/` | 68 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
 | `tools/sprout_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
+| `tools/sprout_daily_check.py` | 33 daily-use requests across Chat, Study, Code and Write, laptop lookups, limits and games (finding 57) |
 | `tools/sprout_tools_check.py`, `tools/sprout_window_check.py`, `tools/sprout_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
 | `tools/hash_models.py` | SHA-256 of every model file, compared with Hugging Face's published hash at the pinned revision → `results/model_files.json` |
 
@@ -1458,7 +1491,7 @@ git apply <this repo>\patches\llama-bench-moe-cache-mib.patch       # llama-benc
 git apply <this repo>\patches\llama-perplexity-parse-special.patch  # chat-corpus KLD (finding 30)
 cd <this repo>
 powershell -ExecutionPolicy Bypass -File tools\build_llama.ps1       # CUDA sm_86, AVX-512 VNNI/VBMI, BF16 off
-python -m unittest discover tests                                    # 65 tests
+python -m unittest discover tests                                    # 68 tests
 ```
 
 **3. Models and data.** `fetch_model.ps1` checks every file against the SHA-256 that

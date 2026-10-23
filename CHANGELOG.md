@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.2.0 (prepared, not yet released): tested on everyday use
+
+A wider test of 33 everyday requests found eleven more problems, and all are fixed. The final full
+run passed 32 of 33; its one failure (a game guess the model made up) was then fixed and re-tested.
+
+### Fixed
+- **No more invented actions.** Sprout sometimes said "I checked your files" or "I'll keep
+  searching" without doing anything. It now searches for real or says it doesn't know
+  (0 of 15 invented searches in a targeted test).
+- **Remembers what you said** earlier in the chat.
+- **Long chats no longer break.** Beyond the model's 16k-token memory, the oldest messages are
+  left out instead of the request failing; a single message that's too long gets a clear
+  explanation.
+- **Games keep their state:** no restart on the first guess, real hints, "play again" starts a
+  fresh game, and every letter's feedback is reported.
+- **Knows what it is:** "a Gemma 4 26B (QAT) model running entirely offline on this laptop".
+- **Drafted emails are signed with your name**, not "[Your Name]".
+- **Lookups stay fast:** "how many tabs?" no longer triggers reasoning.
+- **Laptop access off:** games still work, and laptop questions explain how to turn access on.
+- **Natural replies:** it no longer comments on Sprout's automatic clock note.
+- **Browser tabs:** reports a browser running in the background with no windows.
+- **Games are fair:** the model can't submit a guess you didn't make.
+- **Replies in your script:** a question in Hindi (Devanagari) gets a Hindi answer.
+
+### Checks
+- New: `tools/sprout_daily_check.py` (33 requests). 68 unit tests. Lab notebook finding 57.
+
 ## v1.1.0: Sprout knows your laptop, and works for you
 
 Sprout v1.0 could chat, but in daily use it fell short: it made up the time, couldn't say where

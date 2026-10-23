@@ -57,6 +57,26 @@ CONTROL_RX = re.compile(r"\b(give up|i quit|reveal|what was the word|what's the 
                         r"new game)\b", re.I)
 
 
+NEW_GAME_RX = re.compile(r"\b(play again|new game|another (one|game|round)|start over|restart)\b", re.I)
+HINT_RX = re.compile(r"\b(hint|clue|help me)\b", re.I)
+WANTS_NEW = {"flag": False}  # set by the server when the user's message asks for a fresh game
+WANTS_HINT = {"flag": False}  # set by the server when the user's message asks for a hint
+USER_TEXT = {"text": None}  # the user's newest message, set by the server: only its words count as guesses
+
+
+def state_line():
+    """The running game's state for the newest message: the model never sees its earlier tool calls."""
+    if not GAME or GAME["over"]:
+        return ""
+    how = ("Use word_game with action guess for a guess, hint for a hint, reveal if they give up (not start, "
+           "which would not restart this game), and tell the user its summary in full.")
+    if GAME["kind"] == "wordle":
+        done = ", ".join(g.upper() for g in GAME["guesses"]) or "none yet"
+        return (f"Wordle game in progress (guesses so far: {done}; {MAX_WORDLE_GUESSES - len(GAME['guesses'])} "
+                f"left). {how}")
+    return f"Hangman game in progress (board {_board()}; {HANGMAN_LIVES - len(GAME['wrong'])} lives left). {how}"
+
+
 def is_game_turn(text):
     """True when this message is a game move, so the referee must handle it rather than the model:
     the game is named, or a game is on and the message is one letter, a word of the secret's length,
@@ -91,11 +111,30 @@ def _board():
     return " ".join(c.upper() if c in GAME["letters"] else "_" for c in GAME["word"])
 
 
-def word_game(action, game="wordle", guess=""):
+def _status():
+    """Where a running game stands, for a 'start' that would otherwise wipe it."""
+    if GAME["kind"] == "wordle":
+        return {"game": "wordle", "in_progress": True, "guesses_so_far": [g.upper() for g in GAME["guesses"]],
+                "guesses_left": MAX_WORDLE_GUESSES - len(GAME["guesses"])}
+    return {"game": "hangman", "in_progress": True, "board": _board(),
+            "wrong_guesses": [w.upper() for w in GAME["wrong"]], "lives_left": HANGMAN_LIVES - len(GAME["wrong"])}
+
+
+def word_game(action, game="wordle", guess="", new=False):
     action, game, guess = str(action).lower(), str(game).lower(), str(guess or "").strip().lower()
     if action == "start":
         if game not in ("wordle", "hangman"):
             return {"error": "game must be wordle or hangman"}
+        new = new or WANTS_NEW["flag"]  # "play again" from the user, even if the model left new=false
+        WANTS_NEW["flag"] = False
+        if GAME and not GAME["over"] and GAME["kind"] == game and not new:
+            # the model doesn't see its earlier tool calls, so it may "start" again mid-game: keep the game
+            out = {**_status(), "note": "This game is already running; carry on with it. Use new=true only "
+                                        "if the user asked for a fresh game."}
+            if WANTS_HINT["flag"]:  # the user asked for a hint but the model called start: give the hint anyway
+                out.update(word_game("hint"))
+                out["note"] = "The user asked for a hint: tell them this hint."
+            return out
         word = random.choice(WORDLE_WORDS if game == "wordle" else HANGMAN_WORDS)
         GAME.clear()
         GAME.update(kind=game, word=word, guesses=[], letters=set(), wrong=[], over=False)
@@ -121,6 +160,11 @@ def word_game(action, game="wordle", guess=""):
         return {"hint": f"the word contains {missing[0].upper()}" if missing else "no letters left to find"}
     if action != "guess":
         return {"error": "action must be start, guess, hint or reveal"}
+    said = USER_TEXT["text"]
+    if said is not None and guess not in re.findall(r"[a-z]+", said.lower()):
+        # the model must not play for the user (it once submitted "GUESS" after the user typed "ok")
+        return {"error": f"'{guess.upper()}' isn't in the user's message, so it isn't their guess. Nothing was "
+                         f"scored; wait for them to make a guess."}
     if GAME["kind"] == "wordle":
         if len(guess) != 5 or not guess.isalpha():
             return {"error": "a Wordle guess must be one 5-letter word", "guesses_left":
@@ -130,7 +174,13 @@ def word_game(action, game="wordle", guess=""):
         won = guess == GAME["word"]
         left = MAX_WORDLE_GUESSES - len(GAME["guesses"])
         GAME["over"] = won or left == 0
-        out = {"guess": guess.upper(), "feedback": [{"letter": g.upper(), "result": m} for g, m in zip(guess, marks)],
+        groups = {k: [g.upper() for g, m in zip(guess, marks) if m == k]
+                  for k in ("right spot", "in word, wrong spot", "not in word")}
+        summary = "; ".join(f"{', '.join(v)} {'is' if len(v) == 1 else 'are'} " +
+                            {"right spot": "in the right spot", "in word, wrong spot": "in the word but in the wrong spot",
+                             "not in word": "not in the word"}[k] for k, v in groups.items() if v)
+        out = {"guess": guess.upper(), "summary": ("You got it! " if won else "") + summary + ".",
+               "feedback": [{"letter": g.upper(), "result": m} for g, m in zip(guess, marks)],
                "won": won, "guesses_left": left}
         if GAME["over"]:
             out["word"] = GAME["word"].upper()
@@ -156,6 +206,12 @@ def word_game(action, game="wordle", guess=""):
     lives = HANGMAN_LIVES - len(GAME["wrong"])
     GAME["over"] = won or lives <= 0
     out.update(board=_board(), wrong_guesses=[w.upper() for w in GAME["wrong"]], lives_left=max(lives, 0), won=won)
+    if "letter" in out:
+        said = (f"Yes, {out['letter']} appears {out['count']} time{'s' if out['count'] != 1 else ''}" if hit
+                else f"No {out['letter']}")
+    else:
+        said = f"{out['word_guess']} is {'right' if hit else 'not the word'}"
+    out["summary"] = f"{said}. Board: {out['board']}. Lives left: {out['lives_left']}."
     if GAME["over"]:
         out["word"] = GAME["word"].upper()
     return out

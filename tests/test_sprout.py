@@ -94,6 +94,7 @@ class SettingsAndTools(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.orig = server.SETTINGS_FILE
         server.SETTINGS_FILE = server.Path(self.tmp.name) / "settings.json"
+        server.tools.games.USER_TEXT["text"] = None  # direct referee calls: no user message to check against
 
     def tearDown(self):
         server.SETTINGS_FILE = self.orig
@@ -131,7 +132,9 @@ class SettingsAndTools(unittest.TestCase):
     def test_laptop_access_off_removes_tools(self):
         server.save_settings({**server.DEFAULT_SETTINGS, "laptop_access": False})
         body, _, _ = server.build_request({"mode": "chat", "messages": self.msgs})
-        self.assertNotIn("tools", body)
+        # only the game referee stays: it reads nothing from the laptop
+        self.assertEqual([t["function"]["name"] for t in body["tools"]], ["word_game"])
+        self.assertNotIn(server.TOOL_GUIDE, body["messages"][0]["content"])
 
     def test_bad_settings_are_sanitised(self):
         server.SETTINGS_FILE.write_text('{"always_allow": ["system_vitals", "rm_rf"], "x": 1}')
@@ -157,7 +160,9 @@ class SettingsAndTools(unittest.TestCase):
             server.tools.now_context = orig
         self.assertEqual(a["messages"][0], b["messages"][0])  # identical system prompt -> cache reuse
         self.assertNotIn("Right now", a["messages"][0]["content"])
-        self.assertTrue(b["messages"][-1]["content"].endswith("[Right now on this laptop: 10:01]"))
+        last = b["messages"][-1]["content"]
+        self.assertIn("never mention it: Right now on this laptop: 10:01", last)
+        self.assertTrue(last.endswith("]") and "say you don't know" in last and "told you earlier" in last)  # honesty + memory reminder
         self.assertEqual(a["messages"][1:3], [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hey"}])
         self.assertEqual(msgs[-1]["content"], "what time is it?")  # the caller's history is untouched
 
@@ -217,15 +222,68 @@ class SettingsAndTools(unittest.TestCase):
         self.assertFalse(g.is_game_turn("guest"))  # the game is over
         self.assertTrue(g.is_game_turn("play again"))
 
+    def test_running_game_is_visible_and_play_again_starts_fresh(self):
+        g = server.tools.games
+        g.GAME.clear()
+        g.word_game("start", "wordle")
+        g.word_game("guess", guess="crane")
+        body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "hint please"}]})
+        self.assertIn("guesses so far: CRANE", body["messages"][-1]["content"])
+        self.assertIn("guesses_so_far", g.word_game("start", "wordle"))  # a stray start keeps the game
+        server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "play again"}]})
+        self.assertNotIn("guesses_so_far", g.word_game("start", "wordle"))  # the user asked: a fresh game
+        g.word_game("reveal")
+        body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "hi"}]})
+        self.assertNotIn("game in progress", body["messages"][-1]["content"])
+
+    def test_hint_and_script_follow_the_users_words(self):
+        g = server.tools.games
+        g.GAME.clear()
+        g.word_game("start", "wordle")
+        server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "give me a hint"}]})
+        self.assertIn("hint", g.word_game("start", "wordle"))  # a stray start still carries the hint asked for
+        g.word_game("reveal")
+        g.word_game("start", "wordle", new=True)
+        server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "ok"}]})
+        self.assertIn("error", g.word_game("guess", guess="guess"))  # the model can't play for the user
+        self.assertEqual(g._status()["guesses_so_far"], [])
+        server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "Crane!"}]})
+        self.assertIn("summary", g.word_game("guess", guess="crane"))
+        g.word_game("reveal")
+        for text, note in (("आज मौसम कैसा है?", True), ("bhai kya haal hai", False), ("hello", False)):
+            body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": text}]})
+            self.assertEqual("same language and script" in body["messages"][-1]["content"], note, text)
+
     def test_chat_thinks_only_when_needed(self):
         for text, expect in (("When do I finish if I have 3 meetings of 45 minutes from 2 pm?", True),
                              ("how many days until 15 November?", True), ("yo", False),
-                             ("what time is it?", False), ("find my aadhaar card", False)):
+                             ("what time is it?", False), ("find my aadhaar card", False),
+                             ("how many tabs do I have open?", False), ("how much RAM is free?", False),
+                             ("how many hours until my 5 pm meeting?", True)):
             body, _, _ = server.build_request({"mode": "chat", "think": False,
                                                "messages": [{"role": "user", "content": text}]})
             self.assertEqual(body["chat_template_kwargs"]["enable_thinking"], expect, text)
         body, _, _ = server.build_request({"mode": "chat", "think": False, "messages": [{"role": "user", "content": "yo"}]})
         self.assertNotIn("tool_choice", body)
+
+    def test_long_chats_are_trimmed_to_fit(self):
+        short = [{"role": "user", "content": "hi"}]
+        body, _, _ = server.build_request({"mode": "chat", "messages": short})
+        self.assertEqual(len(body["messages"]), 2)
+        self.assertNotIn(server.OMITTED_NOTE, body["messages"][0]["content"])
+        long_ = []
+        for i in range(40):  # ~120k characters: far beyond the 16k-token context
+            long_ += [{"role": "user", "content": f"note {i} " + "x1 y2 z3 " * 330},
+                      {"role": "assistant", "content": f"ok {i}"}]
+        long_.append({"role": "user", "content": "what was the last note?"})
+        body, _, _ = server.build_request({"mode": "chat", "messages": long_})
+        msgs = body["messages"]
+        self.assertIn(server.OMITTED_NOTE, msgs[0]["content"])
+        self.assertTrue(msgs[-1]["content"].startswith("what was the last note?"))  # newest message kept
+        self.assertEqual(msgs[1]["role"], "user")  # history restarts at a user turn
+        self.assertLess(sum(server.est_tokens(m) for m in msgs) + server.est_tokens(body["tools"]),
+                        server.N_CTX - body["max_tokens"])
+        self.assertIn("note 39", msgs[-3]["content"])  # the most recent history survives, the oldest goes
 
     def test_find_files_takes_spelling_variants(self):
         import tempfile
