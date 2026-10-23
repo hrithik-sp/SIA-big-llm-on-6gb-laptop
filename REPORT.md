@@ -535,6 +535,12 @@ Full commands: lab notebook, "Recommended settings".
 
 ## 7. Future work
 
+- **Sprout, toward an assistant that runs the laptop** (README "Roadmap"):
+  - actions with approval (open, set, close);
+  - on-request optimisation (startup apps, memory hogs, disk, battery wear);
+  - a faster first reply;
+  - local memory the owner controls;
+  - screen understanding.
 - **Light models for heavy multitasking:** Gemma 4 E4B and 12B QAT, and Qwen3.5-9B, on the same
   210 questions.
 - **Upstream contributions:**

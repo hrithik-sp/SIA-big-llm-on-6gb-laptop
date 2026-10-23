@@ -18,6 +18,9 @@
   <img src="https://img.shields.io/badge/Windows%2011-RTX%203050%206%20GB-555" alt="Windows 11, RTX 3050 6 GB">
 </p>
 
+<p align="center"><b>v1.1.0</b>: Sprout now knows the time, your location and your devices, works as your
+assistant, and answers in 1.5–2.5 s. <a href="CHANGELOG.md">What's new</a></p>
+
 <p align="center">
   <img src="docs/images/sprout-study.png" alt="Sprout explaining Dijkstra's algorithm in Study mode, running Gemma 4 26B locally" width="860">
 </p>
@@ -117,6 +120,7 @@ A one-click desktop app built on these results:
 | Path | Contents |
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
 | [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (56 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
@@ -148,6 +152,26 @@ limits:
 
 Open items (light models for heavy multitasking, a large MoE-cache test) are listed in
 [REPORT.md § 6–7](REPORT.md#6-limitations).
+
+## Roadmap
+
+Sprout's goal is a smart, human-feeling assistant that knows this laptop and, step by step, can
+run it. Next, in order:
+
+1. **Act on the laptop, with approval.** Open a file, folder or app; set volume or brightness;
+   take a screenshot; close a frozen app. Every action shows a card first (like the read tools
+   today), and nothing is deleted or sent.
+2. **Optimise the laptop on request.** Find what slows it down (startup apps, memory hogs, full
+   disks, battery wear), explain it plainly, and, with approval, apply the fix.
+3. **A faster first reply.** Keep the model ready longer when memory allows, or prefetch it from
+   the SSD, so the first message after a break isn't ~40 s.
+4. **Memory you control.** Remember preferences and facts you tell it, stored locally,
+   viewable and deletable.
+5. **See the screen.** "What am I looking at?" through the vision model, with permission.
+6. **A light mode for heavy multitasking:** a smaller model when Chrome and other apps need the
+   RAM (Gemma 4 E4B/12B QAT and Qwen3.5-9B evaluation in progress).
+
+Every step is measured with the same behaviour and laptop tests before it ships.
 
 ## Author
 
