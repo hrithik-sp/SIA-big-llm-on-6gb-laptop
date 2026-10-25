@@ -585,6 +585,20 @@ class Voice(unittest.TestCase):
         self.assertEqual(sp("```python\nprint(1)\n```"), "")
         self.assertEqual(sp("It's 23°C"), "It's 23 degrees Celsius")
 
+    def test_preroll_keeps_the_first_syllable(self):
+        """Speech is detected a little late; 0.3 s from before the detected start goes to recognition too
+        ("What's a good way ..." had been heard as "That's a good way ...")."""
+        import numpy as np
+        v = server.voice
+        L = v.Listener.__new__(v.Listener)  # no models needed for this part
+        L.heard = np.arange(20000, dtype=np.float32)
+        L.heard_from = 10000  # the buffer holds samples 10000..29999
+        seg = np.arange(15000, 16000, dtype=np.float32)
+        out = L._with_preroll(15000, seg)
+        self.assertEqual(len(out), v.PREROLL + 1000)
+        self.assertEqual(out[0], 15000 - v.PREROLL - 10000)  # the audio just before the segment
+        self.assertEqual(len(L._with_preroll(10100, seg[:10])), 110)  # only as much as is kept
+
     def test_voice_list(self):
         ids = server.voice.VOICE_IDS
         self.assertEqual(len(ids), len(set(ids)))

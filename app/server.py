@@ -827,6 +827,10 @@ def mcp_guides(names):
     return "\n\n".join(out)
 
 
+GREETING_RX = re.compile(r"^\W*(?:(?:hey|hi|hello|hiya|yo|sup|good (?:morning|afternoon|evening)|what'?s up|"
+                         r"howdy)\b[\s,.!?]*(?:sprout|there|buddy)?[\s,.!?]*)+$", re.I)
+ACK_RX = re.compile(r"^\W*(?:cool|ok(?:ay)?|k|nice|great|thanks?(?: you)?|thx|got it|alright|all right|sure|fine|awesome|"
+                    r"perfect|good|noted|right)\W*$", re.I)  # "Cool." got "What's on your mind?"
 # a message that may tell Sprout a lasting fact about the user ("my laptop is an HP Victus, by the way")
 FACT_RX = re.compile(r"\b(remember|keep in mind|note that|by the way|fyi)\b|\bmy \w+(?: \w+)? (?:is|are)\b|"
                      r"\bI(?: am|'m| like| love| prefer| hate| use| work| study| live)\b", re.I)
@@ -889,7 +893,9 @@ HONESTY = ("Memory and honesty: what the user told you earlier in this conversat
            "something later or in the background, and never say you checked, searched, found, opened or changed "
            "anything unless a tool did it in this reply. Beyond your tools you can't act: you can't delete or move "
            "files, install or uninstall software, run programs or scripts from files, send messages or emails, or "
-           "look things up on the internet; say so plainly when asked. General knowledge from your training "
+           "look things up on the internet; and you can't see calendars, email, messages or accounts (for a "
+           "schedule you can set reminders, or read a schedule file the user points to). Say so plainly when "
+           "asked, and never offer something you can't do. General knowledge from your training "
            "(places, history, science, how things work, well-known facts like a city's altitude) you answer "
            "directly; only things that need live data (news, prices, scores, today's weather) are out of reach.")
 LAPTOP = tools.laptop_summary()
@@ -1045,8 +1051,13 @@ def build_request(req):
             if FACT_RX.search(last_text):
                 memory += (" If this message tells you a lasting fact about the user, save it with a memory tool now; "
                            "never just say you'll keep it in mind.")
+        # a greeting got "Hey Hrithik. What's on your mind?": no name, no reflex question, said next to the message
+        greet = (" A greeting: answer it briefly and naturally, without their name and without a question."
+                 if GREETING_RX.match(last_text) else
+                 " Just an acknowledgement: reply in a few words or less (\"Sure.\", \"Anytime.\"), with no question."
+                 if ACK_RX.match(last_text) else "")
         stamp = (f"[Sprout note, not written by the user; never mention it: {tools.now_context()}"
-                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{script_note}]")
+                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{greet}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):
             last["content"] = list(last["content"]) + [{"type": "text", "text": stamp}]

@@ -433,6 +433,7 @@ async function stream() {
   S.streaming = true; $("#send").hidden = true; $("#stop").hidden = false; busy(true);
   $("#status-pill .dot").className = "dot busy"; $("#status-text").textContent = "Working";
   S.abort = new AbortController();
+  Object.assign(V, { firstOut: false, tText: null, gap: null });  // per-reply voice bookkeeping
   const t0 = performance.now(); let tFirst = null, tThinkEnd = null, timings = null, model = S.model;
   const wait = el("div", "waiting"); const dots = el("span", "typing"); dots.append(el("i"), el("i"), el("i"));
   wait.append(dots, el("span", null, "")); v.answer.before(wait);
@@ -475,6 +476,7 @@ async function stream() {
         const delta = ev.choices && ev.choices[0] && ev.choices[0].delta;
         if (!delta) continue;
         if (tFirst == null && (delta.content || delta.reasoning_content)) { tFirst = performance.now(); wait.remove(); }
+        if (delta.content && V.on && V.tText == null) V.tText = performance.now();  // for the text-to-voice gap
         if (delta.reasoning_content) am.reasoning += delta.reasoning_content;
         if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; voiceFeed(delta.content); }
         paint();
@@ -666,13 +668,25 @@ async function askByVoice(text) {
   send();
 }
 // speaking: complete sentences go out as soon as they're written; the next is fetched while one plays
+// The first piece of a reply is cut short (at a comma or after ~8 words) so its audio is ready quickly; the rest
+// goes sentence by sentence, made while earlier pieces play (a run-on is cut at 7 words). A long first sentence once made the voice
+// start ~3 s after the text.
 function voiceFeed(delta) {
   if (!V.on) return;
   V.pending += delta;
-  const re = /^([\s\S]*?[.!?…:;](?=\s)|[\s\S]*?\n)/;
+  const sentence = /^([\s\S]*?[.!?…:;](?=\s)|[\s\S]*?\n)/;
   let m;
-  while ((m = V.pending.match(re)) && m[1].trim().length >= 2) {
-    queueSpeech(m[1]); V.pending = V.pending.slice(m[1].length);
+  for (;;) {
+    if (!V.firstOut) {
+      const words = V.pending.split(/\s+/);
+      const clause = V.pending.match(/^((?:\S+\s+){3,}?\S+[,–—](?=\s))/);  // a comma after 4+ words
+      // or just before a joining word after 4+ words ("I can check your calendar | if you have ..."), as a speaker
+      // would pause; a long run-on sentence is cut at 10 words; a short sentence is never split
+      const join = words.length > 7 && V.pending.match(/^((?:\S+\s+){4,}?)(?=(?:if|and|but|so|because|which|when|while|where|then|or|though)\s)/i);
+      m = V.pending.match(sentence) || clause || join || (words.length > 10 ? [null, words.slice(0, 7).join(" ") + " "] : null);
+    } else m = V.pending.match(sentence);
+    if (!m || m[1].trim().length < 2) break;
+    queueSpeech(m[1]); V.pending = V.pending.slice(m[1].length); V.firstOut = true;
   }
 }
 // while a tool runs, a person would say "one sec" instead of going silent (once per reply, before any answer)
@@ -714,6 +728,7 @@ function playNext() {
   src.onended = () => { if (V.playing === src) V.playing = null; V.lastEnd = performance.now(); playNext(); prefetchSpeech(); };
   if (performance.now() - V.lastEnd > 1500) V.speakingSince = performance.now();  // a new stretch of speech begins
   V.recent.push({ text: item.text, t: performance.now() }); V.recent = V.recent.slice(-8);
+  if (V.tText != null && V.gap == null) { V.gap = (performance.now() - V.tText) / 1000; (V.gaps = V.gaps || []).push(V.gap); }
   V.playing = src; src.start(); voiceState("speaking");
   prefetchSpeech();
 }

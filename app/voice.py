@@ -35,6 +35,8 @@ PARAKEET = VOICE_DIR / "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-i
 VAD_MODEL = VOICE_DIR / "silero_vad.onnx"
 RATE = 16000  # microphone audio, as the VAD and recogniser expect
 WINDOW = 512  # samples per VAD step (32 ms)
+PREROLL = int(0.3 * RATE)  # audio kept from just before detected speech
+HEARD_MAX = 30 * RATE  # recent audio kept for that
 DEFAULT_VOICE = "af_heart"  # the owner's choice; also Kokoro's top-graded voice (A)
 # Kokoro's English voices graded C or better by its author (hexgrad/Kokoro-82M VOICES.md, "Overall Grade",
 # an estimate of the quality and quantity of each voice's training data), best first. D-graded voices
@@ -93,6 +95,7 @@ def load_tts(voice=DEFAULT_VOICE):
                 max_num_sentences=1))
             _M["lexicon"] = lexicon
             _M["speakers"] = _M["speakers"] or _speaker_ids()
+            _M["tts"].generate("Okay.", sid=0, speed=1.0)  # the first synthesis is slow (engine set-up): do it now
 
 
 def load(voice=DEFAULT_VOICE):
@@ -172,6 +175,7 @@ class Listener:
         self.vad = sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60)
         self.events = queue.Queue()
         self.pending = np.zeros(0, dtype=np.float32)
+        self.heard, self.heard_from = np.zeros(0, dtype=np.float32), 0  # recent audio (for pre-roll) and its offset
         self.in_speech = False
         self.closed = False
         self.work = queue.Queue()
@@ -181,6 +185,10 @@ class Listener:
         """Raw 16-bit little-endian mono 16 kHz audio from the browser."""
         x = np.frombuffer(pcm16, dtype="<i2").astype(np.float32) / 32768
         self.pending = np.concatenate([self.pending, x])
+        self.heard = np.concatenate([self.heard, x])
+        if len(self.heard) > HEARD_MAX:
+            self.heard_from += len(self.heard) - HEARD_MAX
+            self.heard = self.heard[-HEARD_MAX:]
         while len(self.pending) >= WINDOW:
             self.vad.accept_waveform(self.pending[:WINDOW])
             self.pending = self.pending[WINDOW:]
@@ -189,8 +197,17 @@ class Listener:
                 self.events.put({"type": "speech_start"})
             self.in_speech = speaking
             while not self.vad.empty():
-                self.work.put(np.array(self.vad.front.samples, dtype=np.float32))
+                seg = self.vad.front
+                self.work.put(self._with_preroll(seg.start, np.array(seg.samples, dtype=np.float32)))
                 self.vad.pop()
+
+    def _with_preroll(self, start, samples):
+        """The segment plus the PREROLL before it: the detector marks speech a little late, and without this the
+        first syllable was lost ("What's a good way to start my morning?" was heard as "That's a good way ...")."""
+        a = max(start - PREROLL, self.heard_from)
+        if a >= start or start - self.heard_from > len(self.heard):
+            return samples
+        return np.concatenate([self.heard[a - self.heard_from:start - self.heard_from], samples])
 
     def _transcriber(self):
         while not self.closed:

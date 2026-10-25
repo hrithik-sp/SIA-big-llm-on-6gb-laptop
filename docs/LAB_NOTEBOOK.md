@@ -1633,6 +1633,23 @@ Goal: Sprout separate from Edge, quick and smooth.
       second, about 6× faster than speech. So 4 threads stay, because they make the first sentence ready ~0.3 s
       sooner.
 
+65. **Voice in step with the text, a clipped first syllable, and honest offers.** From the owner's next session:
+    - **The voice started ~3 s after the text.** Speech began only once the whole first sentence (17 words) was written
+      and synthesised, while the model was still writing. The first piece of a reply is now cut short: at a comma
+      after 4+ words, just before a joining word ("I can check your calendar | if you have ..."), or after 7 words of a
+      run-on sentence. A short sentence is never split. The voice engine also warms up when voice mode starts.
+      Measured through the page (text shown → voice heard): **1.1–1.2 s** on warm replies, ~2.1 s on the first reply
+      after start-up.
+    - **"What's a good way to start my morning?" was heard as "That's a good way …"**, and Sprout answered a statement.
+      The speech detector marks speech a little late. Recognition now also gets the 0.3 s before the detected start
+      (pre-roll, as Silero's own helper pads segments). Four question openings ("What's", "What", "Why", "Who"):
+      all word-perfect after the change.
+    - **Bluffing:** asked how it would check a schedule, Sprout said it could "check your calendar". It has no
+      calendar, email or message access; the honesty rules now say so, and say never to offer what it can't do.
+      Now: "I can't see your calendar directly, but if you have a schedule file, I can read it for you."
+    - **"Hey Sprout" → "Hey Hrithik. What's on your mind?"** and **"Cool." → "… What's on your mind?"**: greetings and
+      acknowledgements get a note next to the message (no name, no question). Now "Hey." and "Sure.".
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
