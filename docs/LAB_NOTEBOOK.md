@@ -1771,6 +1771,16 @@ Goal: Sprout separate from Edge, quick and smooth.
       come out identical, voice mode holds **460 MB less RAM** (Sia's process 1,263 → 801 MB with voice loaded;
       committed memory 2,138 → 1,287 MB) and loads 1.6 s faster. Voice-to-voice median afterwards 5.33 s (4 turns):
       unchanged within noise, because Windows gives the freed RAM straight to the model's file cache.
+    - **Plans that start when asked.** In a practical multi-turn chat (plan, change it, a concept, a reminder,
+      recall, a wall note) Sia stayed coherent, but a study plan "starting today" asked on a Monday began on
+      Tuesday, once headed "Tuesday (Today)". The question didn't match the rule for thinking first ("plan my/a/the",
+      "schedule"). Messages about days now get today's and the next seven dates with their weekdays in the note (the
+      wrong label went away), and study/exam/trip plans, "make me a … plan" and timetables now think first with the
+      short Chat budget. With the clock set to 2 PM: **1 in 4** plans started today without thinking, **6 in 6**
+      with it (16–49 s instead of 10–23 s).
+    - **Counting with a think first: no measurable gain.** On 30 IFEval prompts with length constraints, making
+      "exactly N words/sentences/paragraphs" requests think first scored 23/30 against 22/30 (4 fixed, 3 broken,
+      two of the broken not affected by the change): noise at temperature 1.0, so it was not kept.
     - **Fixes found along the way.** An empty memory note made Sia save the owner's name as a "memory" during a writing
       task (the note now says the name comes from Settings). A chat file was found as 3,200 zero bytes (a save cut off
       midway); chats are now written to a temporary file and renamed. "Play again" in the middle of Wordle made the

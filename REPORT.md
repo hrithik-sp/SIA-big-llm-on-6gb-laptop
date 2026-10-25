@@ -563,6 +563,8 @@ Full commands: lab notebook, "Recommended settings".
 | 54 | A pause to think ended the turn mid-sentence | A fixed 0.6 s of silence ended every turn | Smart Turn v3.2 hears whether the sentence sounds finished: 89% right on 538 real recordings | 68 |
 | 55 | More recognition mistakes with Indian accents | The small recogniser | "Speech recognition: accurate" in Settings: south Indian 13.5% → 9.8% word errors, +0.5 GB RAM | 68 |
 | 56 | "Play again" mid-Wordle ended the game and Sia said a new word was ready | The model picked the wrong game action | The referee starts a fresh game whenever the user asks for one | 68 |
+| 57 | A study plan "starting today" began tomorrow, once headed "Tuesday (Today)" | The request didn't trigger a think first, and weekdays were left to the model | The coming dates with weekdays go in the note, and plans think first: 6/6 started today instead of 1/4 | 68 |
+| 58 | Voice mode held 460 MB it never used | spaCy's thinc imports PyTorch whenever it is installed | Torch is hidden from Sia's process; pronunciation identical on all 32 test sentences | 68 |
 
 ---
 
