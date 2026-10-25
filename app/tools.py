@@ -861,7 +861,8 @@ TOOLS = {
                                                        "theme: dark or light; media: play, pause, next, previous or stop"}},
             "required": ["setting", "value"]},
         "description": "Change a laptop setting: volume, mute, brightness, Bluetooth, Wi-Fi, theme, or control the "
-                       "music/video playing. Reports the value before and after.",
+                       "music/video playing. Call it directly (no need to read the current value first): it reports the value "
+                       "before and after.",
     },
     "window": {
         "fn": actions.window, "label": "Window", "action": True,

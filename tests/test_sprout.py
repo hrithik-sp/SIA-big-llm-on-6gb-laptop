@@ -612,6 +612,23 @@ class Voice(unittest.TestCase):
                 server.SETTINGS_FILE = orig
 
 
+class GameIntents(unittest.TestCase):
+    def test_asking_for_the_word_reveals_it(self):
+        """From a voice test: "What is the word?" got "I can't tell you directly" until "I pass"."""
+        g = server.tools.games
+        for said in ("What is the word?", "I pass", "what's the answer", "tell me the word", "I give up"):
+            self.assertTrue(g.REVEAL_RX.search(said) and g.CONTROL_RX.search(said), said)
+        self.assertFalse(g.REVEAL_RX.search("give me a hint"))
+        self.assertTrue(g.GAME_RX.search("Want to play a game of Wirdle?"))  # how speech recognition hears it
+        g.GAME.clear()
+        g.WANTS_REVEAL["flag"] = False
+        g.word_game("start", "wordle")
+        g.WANTS_REVEAL["flag"] = True  # the user asked for the word, the model called hint: the word is revealed
+        out = g.word_game("hint")
+        self.assertTrue(out.get("over") and out.get("word"))
+        g.GAME.clear()
+
+
 class KeepAlive(unittest.TestCase):
     def test_requests_in_a_row_on_one_connection(self):
         """Browsers reuse a connection. An unread body ("{}" to /api/voice/start) once turned the next request into

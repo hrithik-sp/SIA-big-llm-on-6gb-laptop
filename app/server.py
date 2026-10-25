@@ -1021,6 +1021,7 @@ def build_request(req):
     # cached prompt prefix, and a time that changes every minute at the top would re-process it all.
     tools.games.WANTS_NEW["flag"] = bool(tools.games.NEW_GAME_RX.search(last_text))
     tools.games.WANTS_HINT["flag"] = bool(tools.games.HINT_RX.search(last_text))
+    tools.games.WANTS_REVEAL["flag"] = bool(tools.games.REVEAL_RX.search(last_text))
     tools.games.USER_TEXT["text"] = last_text
     tools.actions.USER_TEXT["text"] = last_text
     letters = [c for c in last_text if c.isalpha()]

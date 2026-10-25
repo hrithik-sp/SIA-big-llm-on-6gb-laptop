@@ -52,13 +52,17 @@ marble nectar oyster pepper rhythm sunset tablet unicorn velvet wizard
 
 GAME = {}  # the active game: {"kind", "word", "guesses" | "letters", "over"}
 MAX_WORDLE_GUESSES, HANGMAN_LIVES = 6, 6
-GAME_RX = re.compile(r"\b(wordle|hangman)\b", re.I)
-CONTROL_RX = re.compile(r"\b(give up|i quit|reveal|what was the word|what's the word|hint|play again|another one|"
-                        r"new game)\b", re.I)
+GAME_RX = re.compile(r"\b(w[oiue]rdle|hangman)\b", re.I)  # the speech recogniser hears "Wordle" as "Wirdle"
+CONTROL_RX = re.compile(r"\b(give up|i quit|i pass|reveal|what('?s| is| was) the (word|answer)|tell me the (word|answer)|"
+                        r"hint|play again|another one|new game)\b", re.I)
 
 
 NEW_GAME_RX = re.compile(r"\b(play again|new game|another (one|game|round)|start over|restart)\b", re.I)
 HINT_RX = re.compile(r"\b(hint|clue|help me)\b", re.I)
+# "What is the word?" asks for the answer: the model once refused ("I can't tell you directly") until "I pass"
+REVEAL_RX = re.compile(r"\b(give up|i quit|i pass|reveal|what('?s| is| was) the (word|answer)|tell me the (word|answer))\b",
+                       re.I)
+WANTS_REVEAL = {"flag": False}  # set by the server when the user's message asks for the answer
 WANTS_NEW = {"flag": False}  # set by the server when the user's message asks for a fresh game
 WANTS_HINT = {"flag": False}  # set by the server when the user's message asks for a hint
 USER_TEXT = {"text": None}  # the user's newest message, set by the server: only its words count as guesses
@@ -122,6 +126,9 @@ def _status():
 
 def word_game(action, game="wordle", guess="", new=False):
     action, game, guess = str(action).lower(), str(game).lower(), str(guess or "").strip().lower()
+    if WANTS_REVEAL["flag"] and GAME and not GAME["over"]:  # the user asked for the answer: reveal it
+        WANTS_REVEAL["flag"] = False
+        action = "reveal"
     if action == "start":
         if game not in ("wordle", "hangman"):
             return {"error": "game must be wordle or hangman"}

@@ -131,12 +131,12 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (63 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (64 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
 | `app/` | Sprout (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 84 unit tests |
+| `tests/` | 85 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -144,7 +144,7 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 84 tests, no GPU or models needed
+python -m unittest discover tests          # 85 tests, no GPU or models needed
 ```
 
 - **Run Sprout:** build llama.cpp, download the five model files, run `app\install.ps1`.

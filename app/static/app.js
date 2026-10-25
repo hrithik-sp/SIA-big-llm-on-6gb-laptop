@@ -481,7 +481,7 @@ async function stream() {
       }
     }
   } catch (e) {
-    am.error = e.name === "AbortError" ? "Stopped." : e.message === "Failed to fetch" ? "Sprout's engine isn't reachable. Reopen Sprout and try again." : e.message;
+    am.error = e.name === "AbortError" ? (V.on ? "Interrupted." : "Stopped.") : e.message === "Failed to fetch" ? "Sprout's engine isn't reachable. Reopen Sprout and try again." : e.message;
   } finally {
     finished = true;
     clearInterval(waitTimer); wait.remove();

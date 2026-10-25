@@ -87,7 +87,9 @@ def load_tts(voice=DEFAULT_VOICE):
                         model=str(KOKORO / "model.onnx"), voices=str(KOKORO / "voices.bin"),
                         tokens=str(KOKORO / "tokens.txt"), data_dir=str(KOKORO / "espeak-ng-data"),
                         lexicon=str(KOKORO / lexicon)),
-                    num_threads=4, provider="cpu"),
+                    # 4 threads: the first sentence is ready ~0.3 s sooner than with 2. Fewer threads didn't make the
+                    # model write faster while Sprout speaks (finding 64), and it writes ~6x faster than speech anyway.
+                    num_threads=int(os.environ.get("SPROUT_TTS_THREADS", "4")), provider="cpu"),
                 max_num_sentences=1))
             _M["lexicon"] = lexicon
             _M["speakers"] = _M["speakers"] or _speaker_ids()

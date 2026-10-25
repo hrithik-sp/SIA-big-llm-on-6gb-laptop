@@ -27,11 +27,13 @@ sys.path.insert(0, str(ROOT / "app"))
 import voice  # noqa: E402
 
 EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-QUESTION = "Who created you?"
+QUESTIONS = [q for q in sys.argv[1:] if not q.startswith("--")] or ["Who created you?"]
+QUESTION = QUESTIONS[0]
+GAP_S = 45  # between questions in the fake microphone's recording: room for each answer to be spoken
 H = {"Origin": "http://127.0.0.1:8765", "Content-Type": "application/json"}
 
 DRIVER = r"""
-const port = process.argv[2];
+const port = process.argv[2]; const NQ = Number(process.argv[3] || 1);
 const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
 const page = targets.find((t) => t.type === "page" && t.url.startsWith("http://127.0.0.1:8765"));
 console.error("targets:", JSON.stringify(targets.map((t) => [t.type, t.url])));
@@ -52,13 +54,13 @@ for (let i = 0; i < 60; i++) { ready = await evaluate("typeof S !== 'undefined' 
 console.error("ready:", JSON.stringify(ready));
 const click = await evaluate("document.querySelector('#voice').click(), 'clicked'");
 const t0 = Date.now(); let state = null, toasts = new Set();
-while (Date.now() - t0 < 240000) {
+while (Date.now() - t0 < 90000 + NQ * 60000) {
   state = (await evaluate(`JSON.stringify({ on: V.on, toast: document.querySelector('#toast').hidden ? '' : document.querySelector('#toast').textContent,
-    messages: S.chat ? S.chat.messages.map((m) => ({ role: m.role, text: m.content || m.answer || '', error: m.error || '' })) : [],
+    messages: S.chat ? S.chat.messages.map((m) => ({ role: m.role, text: m.content || m.answer || '', error: m.error || '', stats: m.stats || '' })) : [],
     spoken: V.recent.map((r) => r.text), streaming: S.streaming, placeholder: document.querySelector('#input').placeholder })`)).result?.value;
   const s = JSON.parse(state || "{}");
   if (s.toast) toasts.add(s.toast);
-  if (s.messages && s.messages.some((m) => m.role === "assistant" && m.text) && !s.streaming && s.spoken.length) break;
+  if (s.messages && s.messages.filter((m) => m.role === "assistant" && m.text).length >= NQ && !s.streaming && s.spoken.length) break;
   await new Promise((r) => setTimeout(r, 1000));
 }
 console.log(JSON.stringify({ click: click.result?.value, state: JSON.parse(state || "{}"), toasts: [...toasts], errors, seconds: (Date.now() - t0) / 1000 }));
@@ -75,14 +77,17 @@ def call(method, path, body=None, timeout=60):
 
 
 def question_wav(path):
-    """The question in Sprout's voice at 48 kHz, then 60 s of silence (Edge loops the file)."""
+    """The questions in Sprout's voice at 48 kHz, GAP_S apart, then silence (Edge loops the file)."""
     voice.load_tts()
-    with wave.open(io.BytesIO(voice.speak(QUESTION))) as w:
-        x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
-        sr = w.getframerate()
+    parts = [np.zeros(48000 * 6)]  # speak after the mic is on
+    for q in QUESTIONS:
+        with wave.open(io.BytesIO(voice.speak(q))) as w:
+            x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
+            sr = w.getframerate()
+        x48 = np.interp(np.linspace(0, len(x) - 1, int(len(x) * 48000 / sr)), np.arange(len(x)), x)
+        parts += [x48, np.zeros(48000 * GAP_S - len(x48))]
     voice.unload()
-    x48 = np.interp(np.linspace(0, len(x) - 1, int(len(x) * 48000 / sr)), np.arange(len(x)), x)
-    audio = np.concatenate([np.zeros(48000 * 6), x48, np.zeros(48000 * 60)])  # speak after the mic is on
+    audio = np.concatenate(parts + [np.zeros(48000 * 60)])
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
@@ -121,13 +126,16 @@ def main():
                                  "--autoplay-policy=no-user-gesture-required", "http://127.0.0.1:8765/"],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(4)
-        out = subprocess.run(["node", str(tmp / "driver.mjs"), "9333"], capture_output=True, text=True, timeout=300)
+        out = subprocess.run(["node", str(tmp / "driver.mjs"), "9333", str(len(QUESTIONS))], capture_output=True, text=True,
+                             timeout=200 + 60 * len(QUESTIONS))
         print(out.stderr.strip()[-1500:])
         print(out.stdout.strip())
         r = json.loads(out.stdout.strip().splitlines()[-1]) if out.stdout.strip() else {}
         msgs = r.get("state", {}).get("messages", [])
-        ok = (not r.get("errors") and any(m["role"] == "user" and "creat" in m["text"].lower() for m in msgs)
-              and any(m["role"] == "assistant" and "Hrithik" in m["text"] for m in msgs) and r["state"].get("spoken"))
+        default = QUESTION == "Who created you?"
+        ok = (not r.get("errors") and any(m["role"] == "user" and m["text"] for m in msgs)
+              and any(m["role"] == "assistant" and m["text"] and (not default or "Hrithik" in m["text"]) for m in msgs)
+              and r["state"].get("spoken"))
         print("\nRESULT:", "PASS" if ok else "FAIL", f"({r.get('seconds', 0):.0f} s)")
     finally:
         if edge:

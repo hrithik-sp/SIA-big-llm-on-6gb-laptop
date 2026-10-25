@@ -226,7 +226,7 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 84 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 85 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |

@@ -1615,6 +1615,24 @@ Goal: Sprout separate from Edge, quick and smooth.
       1.1 GB in `app-data\kv` (one per model), written once and rewritten only when the instructions or model
       change.
 
+64. **The owner's voice session, and what it changed.** A real conversation (volume, brightness, identity, Wordle)
+    worked end to end and showed five things to fix:
+    - **Settings took two steps** (read the level, then set it): 10–19 s. The control tool already reports the value
+      before and after; its description now says to call it directly. Checked with every action declined: one call.
+    - **"What is the word?" was refused** ("I can't tell you directly") until "I pass". Asking for the answer is
+      now an intent, like hints, enforced in the game engine.
+    - **Short words were misheard** ("Here" for, probably, "Hint"). In clean audio the 110M recogniser gets single
+      words right ("Hint", "Topic", "Joint", "Hangman", "Reveal") but hears "Wordle" as "Wirdle", which the game now
+      accepts. Hotword biasing isn't usable here: it needs a word-piece vocabulary that the Parakeet export
+      lacks. The robust option is the 0.6B recogniser, at +0.5 GB of RAM.
+    - **"Stopped." under a reply** the owner had moved past: in voice mode it now says "Interrupted."
+    - **The model wrote at 12–19 tok/s while Sprout spoke.** Measured through the page, warm replies to the same
+      three questions: text mode 26–30 tok/s, voice mode ~21 (single replies ranged from 19.7 to 31.9). Two
+      instead of four speech threads made no clear difference, so the cost is the voice pipeline's CPU and memory
+      share, not the voice's threads. It doesn't delay what is heard: even at 20 tok/s Sprout writes ~15 words a
+      second, about 6× faster than speech. So 4 threads stay, because they make the first sentence ready ~0.3 s
+      sooner.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
