@@ -1762,6 +1762,15 @@ Goal: Sprout separate from Edge, quick and smooth.
       (2.9 GiB/s, 3.3 s) did **not** help (first reply 66 s against 56–59 s): RAM was already full, so the pre-read
       pages were evicted before use. Halving the context (8k) would move only one more layer's experts to the GPU.
       With the usual apps open the model is about 1 GB short of RAM, and some paging is the price.
+      Voice turns: a reply needs ~290 new tokens (the newest message plus the per-turn note), read at 70–80 tokens/s.
+      Any batch of 32 tokens or more makes llama.cpp copy every CPU-side expert to the GPU for that batch
+      (`GGML_OP_OFFLOAD_MIN_BATCH`, default 32, `ggml-cuda.cu`), so each turn touches all 9.71 GiB and the evicted
+      part comes from the SSD: a shorter note wouldn't remove that pass. Voice-to-voice median 5.25 s (4 turns).
+    - **PyTorch was loaded for nothing.** spaCy's `thinc` imports PyTorch whenever it is installed (and asks CUDA for
+      devices), although misaki only tags words. Sia now hides torch from its own process: the 32 heteronym sentences
+      come out identical, voice mode holds **460 MB less RAM** (Sia's process 1,263 → 801 MB with voice loaded;
+      committed memory 2,138 → 1,287 MB) and loads 1.6 s faster. Voice-to-voice median afterwards 5.33 s (4 turns):
+      unchanged within noise, because Windows gives the freed RAM straight to the model's file cache.
     - **Fixes found along the way.** An empty memory note made Sia save the owner's name as a "memory" during a writing
       task (the note now says the name comes from Settings). A chat file was found as 3,200 zero bytes (a save cut off
       midway); chats are now written to a temporary file and renamed. "Play again" in the middle of Wordle made the

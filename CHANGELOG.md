@@ -31,6 +31,7 @@
   asked, instead of a question back or an attempt to save a file.
 - **Safer chats:** a chat is saved to a temporary file first, so a save cut off midway can no longer empty it.
 - **"Play again"** in a word game always starts a fresh game.
+- **Lighter voice mode:** about 460 MB less memory and a faster start (a library it never used is no longer loaded).
 - **Voice mode:** talk to Sia and it answers aloud in the same window, with both sides in the chat.
   It runs fully offline on the CPU beside the same model. There are 12 natural male and female voices
   with Preview in Settings, and you can interrupt it by talking.

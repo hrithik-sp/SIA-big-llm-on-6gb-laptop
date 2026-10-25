@@ -22,6 +22,7 @@ import io
 import os
 import queue
 import re
+import sys
 import threading
 import time
 import wave
@@ -123,6 +124,10 @@ class _MisakiKokoro:
 
     def __init__(self, british):
         import onnxruntime as ort
+        # spaCy's thinc imports PyTorch whenever it is installed (and asks CUDA for devices), though misaki only
+        # tags words: hidden, the same 32 heteronym sentences come out identical with 460 MB less RAM in use and
+        # 1.6 s less loading. Nothing in Sia's process uses torch.
+        sys.modules.setdefault("torch", None)
         from misaki import en, espeak
         self.g2p = en.G2P(trf=False, british=british, fallback=espeak.EspeakFallback(british=british))
         for word, sounds in NAMES.items():  # names it has never seen ("Sia" came out as "zhuh")
