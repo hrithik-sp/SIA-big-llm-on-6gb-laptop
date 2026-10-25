@@ -16,6 +16,10 @@
   any length are exact, decimals have no rounding error, and maths functions use 40 digits.
 - **Faster first reply:** the pre-read instructions are saved and restored instead of re-read at every
   start or wake: a message sent right away now gets its first word in about 21 s instead of 47 s.
+- **"Hey Sprout":** in voice mode Sprout answers only when spoken to (wake phrase, then a short follow-up
+  window), ignores other people in the room, and has a pause button.
+- **Knows the world again:** general-knowledge questions (famous people, history, sport) are answered
+  instead of refused.
 - **Voice mode:** talk to Sprout and it answers aloud in the same window, with both sides in the chat.
   It runs fully offline on the CPU beside the same model. There are 12 natural male and female voices
   with Preview in Settings, and you can interrupt it by talking.

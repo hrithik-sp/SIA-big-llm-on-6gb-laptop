@@ -129,6 +129,7 @@ function renderSettings() {
   $("#set-actions").disabled = !st.laptop_access;
   if (document.activeElement !== $("#set-name")) $("#set-name").value = st.user_name || "";
   $("#set-pronouns").value = st.pronouns || "";
+  $("#set-listen").value = st.voice_listen || "wake";
   const sv = $("#set-voice");
   if (st.voices && sv.options.length !== st.voices.length) {  // best first within each group (Kokoro's grades)
     sv.innerHTML = "";
@@ -538,13 +539,16 @@ function toolNote(v, ev) {
 // user said is sent as a normal message, and the reply is spoken sentence by sentence while it streams.
 const V = { on: false, starting: false, ctx: null, out: null, mic: null, node: null, sendQ: [], sending: false,
   events: null, say: [], pending: "", gen: 0, playing: null, fetching: false, paused: false, resumeTimer: null,
-  speakingSince: 0, lastEnd: 0, recent: [] };
+  speakingSince: 0, lastEnd: 0, recent: [], listen: "wake", muted: false };
 
 function voiceState(state) {  // idle | hearing | speaking: the mic button shows it
   document.body.classList.toggle("voice-hearing", state === "hearing");
   document.body.classList.toggle("voice-speaking", state === "speaking");
-  $("#input").placeholder = !V.on ? "Ask Sprout…" : state === "speaking" ? "Speaking… (talk to interrupt)"
-    : state === "hearing" ? "Listening…" : S.streaming ? "Thinking…" : "Talk to Sprout, or type";
+  document.body.classList.toggle("voice-paused", V.on && V.muted);
+  $("#input").placeholder = !V.on ? "Ask Sprout…" : V.muted ? "Listening paused (press pause again to resume)"
+    : state === "speaking" ? (V.listen === "wake" ? "Speaking… (say “Hey Sprout” or “stop” to interrupt)" : "Speaking… (talk to interrupt)")
+    : state === "hearing" ? "Listening…" : S.streaming ? "Thinking…"
+    : V.listen === "wake" ? "Say “Hey Sprout”, or type" : "Talk to Sprout, or type";
 }
 
 async function toggleVoice() {
@@ -552,7 +556,8 @@ async function toggleVoice() {
   if (V.on) return stopVoice();
   V.starting = true; $("#voice").disabled = true; toast("Getting voice ready…", 15000);
   try {
-    await post("/api/voice/start");
+    const started = await post("/api/voice/start");
+    V.listen = started.listen || "always"; V.muted = false;
     V.mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     V.ctx = new AudioContext();
     await V.ctx.audioWorklet.addModule("/static/voice-worklet.js");
@@ -561,7 +566,9 @@ async function toggleVoice() {
     V.ctx.createMediaStreamSource(V.mic).connect(V.node);
     V.out = new AudioContext();  // playback on its own context, so Sprout can pause its voice without pausing the mic
     V.on = true; $("#voice").setAttribute("aria-pressed", "true");
-    voiceEvents(); voiceState("idle"); toast("Voice on. Just talk; tap the mic again to stop.", 3500);
+    $("#voice-pause").hidden = false; $("#voice-pause").setAttribute("aria-pressed", "false");
+    voiceEvents(); voiceState("idle");
+    toast(V.listen === "wake" ? "Voice on. Say “Hey Sprout” to talk to it; tap the mic again to stop." : "Voice on. Just talk; tap the mic again to stop.", 4500);
     wake();
   } catch (e) {
     toast(e.name === "NotAllowedError" ? "Sprout needs the microphone: allow it when asked, then try again." : `Voice mode couldn't start: ${e.message}`, 6000);
@@ -577,13 +584,14 @@ async function stopVoice() {
   if (V.out) V.out.close().catch(() => {});
   clearTimeout(V.resumeTimer);
   Object.assign(V, { ctx: null, out: null, mic: null, node: null, sendQ: [], say: [], pending: "", events: null, paused: false, recent: [] });
-  $("#voice").setAttribute("aria-pressed", "false"); voiceState("idle");
+  $("#voice").setAttribute("aria-pressed", "false"); $("#voice-pause").hidden = true; V.muted = false; voiceState("idle");
   await post("/api/voice/stop").catch(() => {});
 }
 async function pumpAudio() {  // one request at a time keeps the audio in order
   if (V.sending) return;
   V.sending = true;
   while (V.on && V.sendQ.length) {
+    if (V.muted) { V.sendQ = []; break; }  // paused: nothing is sent, so nothing is heard
     const chunks = V.sendQ.splice(0, V.sendQ.length), n = chunks.reduce((a, c) => a + c.byteLength, 0);
     const buf = new Uint8Array(n); let o = 0;
     for (const c of chunks) { buf.set(new Uint8Array(c), o); o += c.byteLength; }
@@ -612,19 +620,48 @@ async function voiceEvents() {
 // when echo is worst, never pauses it (LiveKit uses 1 s; shorter keeps interrupting snappy). A reply still being written is never cancelled by a sound alone.
 // (A sound that stopped speech at once made Sprout cut its own sentence and drop the next reply.)
 const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]?hm+|sure|got it|i see)[.!?]*$/i;
+// Who is Sprout being spoken to by? In "wake" mode (Settings, the default) only speech with "Hey Sprout" (found by
+// a keyword spotter on the server) or in the follow-up window after it is addressed to Sprout; other people
+// talking nearby is never answered, and while Sprout speaks only "Hey Sprout", "stop" or "wait" interrupt it.
+// (In always-listening mode a friend's conversation was answered line by line.)
+const STOP_RX = /^\W*(stop|wait|hold on|shut up|enough|pause|be quiet|quiet|cancel)\b/i;
+const WAKE_RX = /^\W*(?:(?:hey|hi|hay|he|ok(?:ay)?|hello|a|yo)\W+)?(?:sprout\w*|s?trouts?|spouts?|sprites?|prouds?|scouts?)\b[\s,.!?]*/i;
 function onVoiceEvent(ev) {
-  if (ev.type === "speech_start") {
+  if (ev.type === "wake") {
+    if (V.playing || V.say.length || S.streaming) bargeIn();  // "Hey Sprout" while it talks: it stops and listens
+    voiceState("hearing");
+  } else if (ev.type === "speech_start") {
     voiceState("hearing");
     if ((V.playing || V.say.length) && performance.now() - V.speakingSince > 700) pauseSpeech();
   } else if (ev.type === "transcript") {
     clearTimeout(V.resumeTimer);
     const speaking = V.playing || V.say.length || V.paused;
+    if (!ev.addressed) {  // someone else talking, or the user not addressing Sprout
+      if ((speaking || S.streaming) && STOP_RX.test(ev.text)) { bargeIn(); voiceState("idle"); }
+      else resumeSpeech();
+      return;
+    }
     const justSpoke = performance.now() - V.lastEnd < 3000;  // recognition ends ~0.6 s after the sound does
     if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) { resumeSpeech(); return; }
+    const text = V.listen === "wake" ? ev.text.replace(WAKE_RX, "").trim() : ev.text;
     if (speaking || S.streaming) bargeIn();  // real words: Sprout stops and answers them
-    voiceState("idle"); askByVoice(ev.text);
+    voiceState("idle");
+    if (!/\w/.test(text) || (V.listen === "wake" && text.split(/\s+/).length < 2 && WAKE_RX.test(ev.text))) {
+      queueSpeech("Yes?"); followUp(); return;  // just "Hey Sprout": acknowledge, then listen for the request
+    }
+    askByVoice(text.charAt(0).toUpperCase() + text.slice(1));
   } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
+}
+function followUp() {  // after Sprout speaks, the next few seconds need no wake phrase (like Alexa's Follow-Up Mode)
+  if (V.on && V.listen === "wake") post("/api/voice/awake", { seconds: 8 }).catch(() => {});
+}
+function toggleListening() {
+  if (!V.on) return;
+  V.muted = !V.muted;
+  $("#voice-pause").setAttribute("aria-pressed", String(V.muted));
+  if (V.muted) { V.sendQ = []; post("/api/voice/awake", { seconds: 0 }).catch(() => {}); }
+  voiceState("idle");
 }
 function words(text) { return (text.toLowerCase().match(/[a-z0-9']+/g) || []); }
 function isEcho(text) {  // what the mic heard is mostly what Sprout itself just said
@@ -720,7 +757,7 @@ function playNext() {
   if (!V.on || V.playing || !V.out) return;
   V.say = V.say.filter((x) => x.gen === V.gen);
   const item = V.say[0];
-  if (!item) { voiceState("idle"); return; }
+  if (!item) { voiceState("idle"); if (!S.streaming) followUp(); return; }
   if (!item.audio) return;  // still being made
   V.say.shift();
   if (item.audio === "skip") { playNext(); prefetchSpeech(); return; }
@@ -767,6 +804,8 @@ function wire() {
   $("#send").onclick = send;
   $("#voice").onclick = toggleVoice;
   $("#set-voice").onchange = (e) => saveSettings({ voice_name: e.target.value });
+  $("#set-listen").onchange = (e) => { saveSettings({ voice_listen: e.target.value }); if (V.on) toast("Takes effect the next time voice starts.", 3500); };
+  $("#voice-pause").onclick = toggleListening;
   $("#voice-preview").onclick = previewVoice;
   $("#stop").onclick = stop;
   $("#new-chat").onclick = newChat;

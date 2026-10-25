@@ -37,6 +37,10 @@ RATE = 16000  # microphone audio, as the VAD and recogniser expect
 WINDOW = 512  # samples per VAD step (32 ms)
 PREROLL = int(0.3 * RATE)  # audio kept from just before detected speech
 HEARD_MAX = 30 * RATE  # recent audio kept for that
+KWS = VOICE_DIR / "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+WAKE_FILE = Path(__file__).resolve().parent / "data" / "wake_words.txt"  # Hey/Hi/OK/Okay/Hello Sprout, as BPE pieces
+WAKE_LEAD = 2 * RATE  # a wake hit this long after a segment ends still counts for it (decoding lags a little)
+FOLLOW_UP_S = 8  # after the wake phrase, or after Sprout answers: speech without the wake phrase is still for Sprout
 DEFAULT_VOICE = "af_heart"  # the owner's choice; also Kokoro's top-graded voice (A)
 # Kokoro's English voices graded C or better by its author (hexgrad/Kokoro-82M VOICES.md, "Overall Grade",
 # an estimate of the quality and quantity of each voice's training data), best first. D-graded voices
@@ -98,6 +102,26 @@ def load_tts(voice=DEFAULT_VOICE):
             _M["tts"].generate("Okay.", sid=0, speed=1.0)  # the first synthesis is slow (engine set-up): do it now
 
 
+def kws_available():
+    return (KWS / "tokens.txt").exists() and WAKE_FILE.exists()
+
+
+def _spotter():
+    """The wake-phrase spotter (sherpa-onnx Zipformer KWS, GigaSpeech, 3.3M parameters). On spoken test phrases in
+    six voices: 29/30 wake phrases caught, 0 false alarms in 42 others ("His trout", "Brussels sprouts", "sprite",
+    nearby chatter); ~1.5% of one CPU core. A bare "Sprout" keyword fired on "Brussels sprouts", so it isn't used."""
+    import sherpa_onnx
+    with _lock:
+        if _M.get("kws") is None:
+            _M["kws"] = sherpa_onnx.KeywordSpotter(
+                tokens=str(KWS / "tokens.txt"), encoder=str(KWS / "encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
+                decoder=str(KWS / "decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx"),
+                joiner=str(KWS / "joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"), num_threads=1,
+                keywords_file=str(WAKE_FILE), keywords_score=2.0, keywords_threshold=0.2, max_active_paths=4,
+                num_trailing_blanks=1, provider="cpu")
+        return _M["kws"]
+
+
 def load(voice=DEFAULT_VOICE):
     """Load the recogniser and the voice (once; a few seconds)."""
     import sherpa_onnx
@@ -112,7 +136,7 @@ def load(voice=DEFAULT_VOICE):
 
 def unload():
     with _lock:
-        _M["tts"] = _M["stt"] = _M["lexicon"] = None
+        _M["tts"] = _M["stt"] = _M["lexicon"] = _M["kws"] = None
 
 
 def loaded():
@@ -163,9 +187,18 @@ def speak(text, voice=DEFAULT_VOICE, speed=1.0):
 
 
 class Listener:
-    """One voice conversation: microphone audio in, events out ("speech_start" for interrupting, "transcript")."""
+    """One voice conversation: microphone audio in, events out.
 
-    def __init__(self):
+    Events: "wake" (the wake phrase was heard), "speech_start" (speech addressed to Sprout began: used for
+    interrupting), "transcript" (what was said, with "addressed": whether it was meant for Sprout).
+
+    mode "wake": only speech that contains the wake phrase ("Hey Sprout", found by a keyword spotter, not the
+    general recogniser, which heard it as "His trout") or starts in the follow-up window is addressed to Sprout.
+    Other people talking nearby is still transcribed, so the page can recognise "stop", but never answered.
+    mode "always": everything heard is addressed to Sprout (the earlier behaviour; picks up nearby conversations).
+    """
+
+    def __init__(self, mode="wake"):
         import sherpa_onnx
         cfg = sherpa_onnx.VadModelConfig(
             silero_vad=sherpa_onnx.SileroVadModelConfig(
@@ -173,13 +206,30 @@ class Listener:
                 max_speech_duration=25, window_size=WINDOW),
             sample_rate=RATE, num_threads=1, provider="cpu")
         self.vad = sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60)
+        self.mode = mode if mode == "always" or kws_available() else "always"
+        self.kws = self.kws_stream = None
+        if self.mode == "wake":
+            self.kws = _spotter()
+            self.kws_stream = self.kws.create_stream()
         self.events = queue.Queue()
         self.pending = np.zeros(0, dtype=np.float32)
         self.heard, self.heard_from = np.zeros(0, dtype=np.float32), 0  # recent audio (for pre-roll) and its offset
+        self.fed = 0  # samples received so far: the clock for wake hits and the follow-up window
+        self.wake_hits = []  # sample positions where the wake phrase was heard
+        self.awake_until = 0  # follow-up window: speech starting before this sample is addressed to Sprout
         self.in_speech = False
         self.closed = False
         self.work = queue.Queue()
         threading.Thread(target=self._transcriber, daemon=True).start()
+
+    def awake(self, seconds):
+        """Open (or close, with 0) the follow-up window: speech starting in it needs no wake phrase."""
+        self.awake_until = self.fed + int(seconds * RATE) if seconds > 0 else 0
+
+    def _addressed(self, start, end):
+        if self.mode == "always":
+            return True
+        return start < self.awake_until or any(start - RATE <= h <= end + WAKE_LEAD for h in self.wake_hits)
 
     def feed(self, pcm16):
         """Raw 16-bit little-endian mono 16 kHz audio from the browser."""
@@ -189,16 +239,32 @@ class Listener:
         if len(self.heard) > HEARD_MAX:
             self.heard_from += len(self.heard) - HEARD_MAX
             self.heard = self.heard[-HEARD_MAX:]
+        start_of_chunk = self.fed
+        self.fed += len(x)
+        if self.kws:
+            self.kws_stream.accept_waveform(RATE, x)
+            while self.kws.is_ready(self.kws_stream):
+                self.kws.decode_stream(self.kws_stream)
+                if self.kws.get_result(self.kws_stream):
+                    self.kws.reset_stream(self.kws_stream)
+                    self.wake_hits = [h for h in self.wake_hits if h > self.fed - 60 * RATE] + [self.fed]
+                    self.awake(FOLLOW_UP_S)  # the request may follow a pause: "Hey Sprout ... what time is it?"
+                    self.events.put({"type": "wake"})
+        done = 0
         while len(self.pending) >= WINDOW:
             self.vad.accept_waveform(self.pending[:WINDOW])
             self.pending = self.pending[WINDOW:]
+            done += WINDOW
             speaking = self.vad.is_speech_detected()
-            if speaking and not self.in_speech:
+            now = start_of_chunk + done
+            if speaking and not self.in_speech and self._addressed(now, now):
                 self.events.put({"type": "speech_start"})
             self.in_speech = speaking
             while not self.vad.empty():
                 seg = self.vad.front
-                self.work.put(self._with_preroll(seg.start, np.array(seg.samples, dtype=np.float32)))
+                samples = np.array(seg.samples, dtype=np.float32)
+                self.work.put((self._with_preroll(seg.start, samples),
+                               self._addressed(seg.start, seg.start + len(samples))))
                 self.vad.pop()
 
     def _with_preroll(self, start, samples):
@@ -212,7 +278,7 @@ class Listener:
     def _transcriber(self):
         while not self.closed:
             try:
-                seg = self.work.get(timeout=0.5)
+                seg, addressed = self.work.get(timeout=0.5)
             except queue.Empty:
                 continue
             try:
@@ -221,7 +287,8 @@ class Listener:
                 self.events.put({"type": "error", "error": f"speech recognition failed: {e}"})
                 continue
             if re.search(r"\w", text):
-                self.events.put({"type": "transcript", "text": text, "seconds": round(len(seg) / RATE, 2)})
+                self.events.put({"type": "transcript", "text": text, "addressed": addressed,
+                                 "seconds": round(len(seg) / RATE, 2)})
             else:
                 self.events.put({"type": "speech_end"})  # a cough or noise: nothing to answer
 

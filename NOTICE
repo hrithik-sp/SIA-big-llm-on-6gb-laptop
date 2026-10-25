@@ -15,5 +15,6 @@ Third-party components keep their own licences:
   (MIT, configured but disabled).
 - Voice mode (optional, installed separately): sherpa-onnx (Apache-2.0); Silero VAD (MIT); NVIDIA Parakeet
   TDT 110M (CC-BY-4.0); Kokoro-82M (Apache-2.0), voices by hexgrad.
+  Wake phrase: sherpa-onnx Zipformer keyword spotter trained on GigaSpeech (Apache-2.0).
 - Models used by this project are not included and come under their own licences; see each
   model card.

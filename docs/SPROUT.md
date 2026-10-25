@@ -86,7 +86,7 @@ Instead of a new special-purpose tool for every kind of question, Sprout has two
 
 ### Voice mode
 
-Tap the microphone button and talk. Sprout answers aloud, and both sides appear in the chat as usual.
+Tap the microphone button and say **"Hey Sprout"**, then your request ("Hey Sprout, what time is it?"). Sprout answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored; while Sprout speaks, "Hey Sprout", "stop" or "wait" interrupt it. The pause button stops listening; Settings has "Always listening" for when you're alone.
 It is the same model and personality, answering in a spoken style. Talk over it to interrupt; tap the
 button again to stop.
 
@@ -216,7 +216,8 @@ the models.
 6. **Optional, voice mode:** download the voice models from the official sherpa-onnx releases
    (`k2-fsa/sherpa-onnx`, tags `asr-models` and `tts-models`) into `%USERPROFILE%\llm\models\voice`:
    `silero_vad.onnx`, `sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8` and
-   `kokoro-multi-lang-v1_0` (unpack the archives). Without them, voice mode simply says it isn't installed.
+   `kokoro-multi-lang-v1_0` (unpack the archives), and for the wake phrase
+   `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (tag `kws-models`). Without them, voice mode simply says it isn't installed.
 7. Open **Sprout** and put your name in Settings, so it knows who it works for.
 
 To run it without installing: `python app\server.py` (or `--background`, `--model gptoss`,
@@ -226,7 +227,7 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 86 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 87 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |

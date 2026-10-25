@@ -599,6 +599,24 @@ class Voice(unittest.TestCase):
         self.assertEqual(out[0], 15000 - v.PREROLL - 10000)  # the audio just before the segment
         self.assertEqual(len(L._with_preroll(10100, seg[:10])), 110)  # only as much as is kept
 
+    def test_only_speech_for_sprout_is_answered(self):
+        """Wake mode: speech counts only with "Hey Sprout" in it or in the follow-up window after it (a friend's
+        conversation nearby was answered line by line in always-listening mode)."""
+        v = server.voice
+        L = v.Listener.__new__(v.Listener)  # no models needed for this part
+        L.mode, L.fed, L.wake_hits, L.awake_until = "wake", 0, [], 0
+        R = v.RATE
+        self.assertFalse(L._addressed(0, 2 * R))  # someone talking, no wake phrase
+        L.wake_hits = [10 * R]  # "Hey Sprout" heard at 10 s, inside "Hey Sprout, what time is it?" (9.5-12 s)
+        self.assertTrue(L._addressed(int(9.5 * R), 12 * R))
+        self.assertFalse(L._addressed(20 * R, 22 * R))  # later chatter
+        L.fed = 30 * R
+        L.awake(8)  # Sprout finished answering: the follow-up window
+        self.assertTrue(L._addressed(33 * R, 35 * R))
+        self.assertFalse(L._addressed(40 * R, 42 * R))  # after the window
+        L.mode = "always"
+        self.assertTrue(L._addressed(40 * R, 42 * R))
+
     def test_voice_list(self):
         ids = server.voice.VOICE_IDS
         self.assertEqual(len(ids), len(set(ids)))

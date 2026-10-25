@@ -555,6 +555,8 @@ Full commands: lab notebook, "Recommended settings".
 | 46 | VS Code hung twice while testing app control | Windows-MCP's UI Automation hooks every window | Windows-MCP switched off; the tab counter touches only browser frames | 61 |
 | 47 | Asked who made it, Sprout said Google | Its prompt never named its creator, so the model fell back on its training | The prompt names the owner as creator; the base model is named only when asked | 62 |
 | 48 | Voice replies took 8–11 s | The voice models' RAM pushed the 26B model into SSD paging | A recogniser a quarter the size (same accuracy), a shorter per-turn note: median 4.4 s | 62 |
+| 49 | Famous people "unknown" (Abdul Kalam, Aryabhata) | An honesty line said "for anything they haven't told you, say you don't know" | Limited to facts about the user and the laptop; 7 knowledge questions in the daily check | 66 |
+| 50 | Voice answered a friend's conversation line by line | Always listening | "Hey Sprout" wake phrase (keyword spotter: 29/30 caught, 0/42 false alarms), follow-up window, stop words, pause button | 66 |
 
 ---
 

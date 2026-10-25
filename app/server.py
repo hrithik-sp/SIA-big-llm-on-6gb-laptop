@@ -699,7 +699,7 @@ def kb_list():
 # --------------------------------------------------------------------------- settings
 SETTINGS_FILE = DATA / "settings.json"
 DEFAULT_SETTINGS = {"laptop_access": True, "laptop_actions": True, "always_allow": [], "user_name": "",
-                    "voice_name": voice.DEFAULT_VOICE, "pronouns": ""}
+                    "voice_name": voice.DEFAULT_VOICE, "pronouns": "", "voice_listen": "wake"}
 PRONOUNS = {"he/him": ("he", "his"), "she/her": ("she", "her"), "they/them": ("they", "their")}
 ACTIONS_LOG = DATA / "logs" / "actions.log"
 
@@ -1037,9 +1037,15 @@ def build_request(req):
     if messages and messages[-1].get("role") == "user":
         game = tools.games.state_line()
         # the honesty rule again, where the model weighs it most: next to the newest message
-        rule = (" Use what the user told you earlier in this conversation directly. For anything they haven't told "
-                "you: look with a tool or say you don't know, and only say you searched, checked or found something "
-                "if a tool did it in this reply.") if use_tools else ""
+        # This line once said "for anything they haven't told you: look with a tool or say you don't know", and
+        # Sprout refused Abdul Kalam, Aryabhata and "who invented zero". It covers facts about the user and the
+        # laptop only; general knowledge is answered from training.
+        rule = (" Use what the user told you earlier in this conversation directly. Facts about the user or this "
+                "laptop that you weren't told: look with a tool or say you don't know. General knowledge (famous "
+                "people, history, science, places, sport, how things work): answer confidently from what you know, "
+                "like a well-read person; for things that change (who holds an office now, latest news, scores) give "
+                "what you knew and say it may have changed since your training. Only say you searched, checked or "
+                "found something if a tool did it in this reply.") if use_tools else ""
         spoken = (" Spoken reply, read aloud: talk naturally in one to three short sentences, as a sharp assistant "
                   "speaks to their boss; no markdown, lists, symbols or emojis; the full text also shows in the chat.") if req.get("voice") else ""
         calc_note = (" Compute every number in this reply with the calculate tool and quote its result exactly."
@@ -1054,8 +1060,9 @@ def build_request(req):
         # a greeting got "Hey Hrithik. What's on your mind?": no name, no reflex question, said next to the message
         greet = (" A greeting: answer it briefly and naturally, without their name and without a question."
                  if GREETING_RX.match(last_text) else
-                 " Just an acknowledgement: reply in a few words or less (\"Sure.\", \"Anytime.\"), with no question."
-                 if ACK_RX.match(last_text) else "")
+                 " Just an acknowledgement: reply in a few words or less (\"Sure.\", \"Anytime.\"), with no question"
+                 + (", and it is not a game move: call no tool (\"ok\" during Wordle once became a made-up guess)."
+                    if game else ".") if ACK_RX.match(last_text) else "")
         stamp = (f"[Sprout note, not written by the user; never mention it: {tools.now_context()}"
                  f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{greet}{script_note}]")
         last = messages[-1]
@@ -1297,6 +1304,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     st["always_allow"] = [t for t in upd["always_allow"] if t in tools.TOOLS]
                 if upd.get("pronouns") in ("", *PRONOUNS):
                     st["pronouns"] = upd["pronouns"]
+                if upd.get("voice_listen") in ("wake", "always"):
+                    st["voice_listen"] = upd["voice_listen"]
                 if upd.get("voice_name") in voice.VOICE_IDS:
                     st["voice_name"] = upd["voice_name"]
                 save_settings(st)
@@ -1355,10 +1364,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not voice.available():
                 return self._json({"error": "The voice models aren't installed (see docs/SPROUT.md, Voice)."}, 404)
             voice.load(load_settings()["voice_name"])
-            old, STATE["listener"] = STATE.get("listener"), voice.Listener()
+            old, STATE["listener"] = STATE.get("listener"), voice.Listener(load_settings()["voice_listen"])
             if old:
                 old.close()
-            return self._json({"ok": True, "voice": load_settings()["voice_name"]})
+            return self._json({"ok": True, "voice": load_settings()["voice_name"], "listen": STATE["listener"].mode})
         if what == "preview":  # Settings: hear a voice before choosing it (loads only the voice, not the mic)
             req = json.loads(self._body() or b"{}")
             name = req.get("voice") if req.get("voice") in voice.VOICE_IDS else voice.DEFAULT_VOICE
@@ -1375,6 +1384,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(wav)
             return None
+        if what == "awake":  # the follow-up window after Sprout answers (0 closes it)
+            if STATE.get("listener"):
+                STATE["listener"].awake(float(json.loads(self._body() or b"{}").get("seconds", voice.FOLLOW_UP_S)))
+            return self._json({"ok": True})
         if what == "stop":
             if STATE.get("listener"):
                 STATE.pop("listener").close()

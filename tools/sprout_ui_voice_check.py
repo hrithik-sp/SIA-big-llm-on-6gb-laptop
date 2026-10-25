@@ -28,6 +28,8 @@ import voice  # noqa: E402
 
 EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 QUESTIONS = [q for q in sys.argv[1:] if not q.startswith("--")] or ["Who created you?"]
+# lines starting with "~" are someone else talking nearby (another voice): they must never become messages
+REQUESTS = [q for q in QUESTIONS if not q.startswith("~")]
 QUESTION = QUESTIONS[0]
 GAP_S = 45  # between questions in the fake microphone's recording: room for each answer to be spoken
 H = {"Origin": "http://127.0.0.1:8765", "Content-Type": "application/json"}
@@ -81,7 +83,7 @@ def question_wav(path):
     voice.load_tts()
     parts = [np.zeros(48000 * 6)]  # speak after the mic is on
     for q in QUESTIONS:
-        with wave.open(io.BytesIO(voice.speak(q))) as w:
+        with wave.open(io.BytesIO(voice.speak(q.lstrip("~"), voice="af_heart" if q.startswith("~") else "am_michael"))) as w:
             x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
             sr = w.getframerate()
         x48 = np.interp(np.linspace(0, len(x) - 1, int(len(x) * 48000 / sr)), np.arange(len(x)), x)
@@ -126,14 +128,17 @@ def main():
                                  "--autoplay-policy=no-user-gesture-required", "http://127.0.0.1:8765/"],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(4)
-        out = subprocess.run(["node", str(tmp / "driver.mjs"), "9333", str(len(QUESTIONS))], capture_output=True, text=True,
+        out = subprocess.run(["node", str(tmp / "driver.mjs"), "9333", str(len(REQUESTS))], capture_output=True, text=True,
                              timeout=200 + 60 * len(QUESTIONS))
         print(out.stderr.strip()[-1500:])
         print(out.stdout.strip())
         r = json.loads(out.stdout.strip().splitlines()[-1]) if out.stdout.strip() else {}
         msgs = r.get("state", {}).get("messages", [])
         default = QUESTION == "Who created you?"
-        ok = (not r.get("errors") and any(m["role"] == "user" and m["text"] for m in msgs)
+        users = [m["text"] for m in msgs if m["role"] == "user"]
+        strays = [u for u in users if any(q.startswith("~") and q[1:12].lower() in u.lower() for q in QUESTIONS)]
+        print("user messages:", users, "| background lines that became messages:", strays)
+        ok = (not r.get("errors") and not strays and len(users) == len(REQUESTS)
               and any(m["role"] == "assistant" and m["text"] and (not default or "Hrithik" in m["text"]) for m in msgs)
               and r["state"].get("spoken"))
         print("\nRESULT:", "PASS" if ok else "FAIL", f"({r.get('seconds', 0):.0f} s)")

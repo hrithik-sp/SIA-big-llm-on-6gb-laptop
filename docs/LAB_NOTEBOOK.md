@@ -1650,6 +1650,32 @@ Goal: Sprout separate from Edge, quick and smooth.
     - **"Hey Sprout" → "Hey Hrithik. What's on your mind?"** and **"Cool." → "… What's on your mind?"**: greetings and
       acknowledgements get a note next to the message (no name, no question). Now "Hey." and "Sure.".
 
+66. **A demonstration with a friend in the room: strays answered, famous people unknown. Both fixed.**
+    - **Refusals.** "Who is Abdul Kalam / Aryabhata / Donald Trump?" and "Who invented zero?" got "I don't have any
+      information about him in my training". The cause was a line added to every message for honesty: "for anything
+      they haven't told you: look with a tool or say you don't know". It now covers facts about the user and the
+      laptop only; general knowledge is answered from training, and things that change (current office holders,
+      news) come with a note that they may have changed. After: Kalam "11th President of India … People's
+      President", Aryabhata "mathematician and astronomer", President of India "Droupadi Murmu", RCB a real take; still
+      "I don't know" for "when is my dentist appointment?". The daily check now has 7 general-knowledge questions.
+    - **Strays.** In always-listening mode every voice in the room was a message: a friend's conversation was
+      answered line by line, and replies were cut off. The fix follows what commercial assistants do:
+      - a **wake phrase**, "Hey Sprout" (also Hi/OK/Okay/Hello Sprout), found by a dedicated keyword spotter, not the
+        general recogniser, which heard it as "His trout" and "He is proud". The spotter is the sherpa-onnx Zipformer
+        KWS trained on GigaSpeech: 3.3M parameters, 17.6 MB, ~1.5% of one core, its hash checked against the release's
+        GitHub-digested checksum.txt. Spoken test phrases in six voices: **29/30 wake phrases caught, 0 false alarms in
+        42 others**, including "His trout", "Brussels sprouts", "sprite" and nearby chatter. A bare "Sprout" keyword
+        fired on "Brussels sprouts", so it is not used.
+      - a **follow-up window** of 8 s after the wake phrase and after each answer (as Alexa's Follow-Up Mode), so a
+        conversation doesn't need the wake phrase every time;
+      - **interruptions:** while Sprout talks, only "Hey Sprout", "stop" or "wait" cut it off; other speech never does;
+      - a **pause** button (nothing is sent while paused), and "Always listening" kept as a setting for when the owner
+        is alone. "Hey Sprout" on its own gets "Yes?".
+    - **Checked through the real page** (`sprout_ui_voice_check.py`, with "~" lines spoken by a second voice as a
+      friend nearby): the friend's two lines were ignored, and the two "Hey Sprout, …" requests were answered and
+      spoken. A unit test of the addressing logic caught an edge case: a closed follow-up window counted speech at the
+      very first sample.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |

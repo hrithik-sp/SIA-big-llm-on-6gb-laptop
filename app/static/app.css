@@ -289,3 +289,7 @@ body.voice-speaking #composer .voice-btn { animation: voice-breathe 1.6s ease-in
 
 .voice-row { display: flex; gap: 6px; align-items: center; }
 .voice-row .field { flex: 1; min-width: 0; }
+
+/* voice: pause listening */
+#composer .voice-pause[aria-pressed="true"] { color: var(--text); background: var(--surface-2); }
+body.voice-paused #composer .voice-btn { opacity: .55; }
