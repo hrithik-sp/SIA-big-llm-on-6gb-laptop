@@ -538,6 +538,13 @@ const V = { on: false, starting: false, ctx: null, out: null, mic: null, node: n
   events: null, say: [], pending: "", gen: 0, playing: null, fetching: false, paused: false, resumeTimer: null,
   speakingSince: 0, lastEnd: 0, recent: [] };
 
+function voiceState(state) {  // idle | hearing | speaking: the mic button shows it
+  document.body.classList.toggle("voice-hearing", state === "hearing");
+  document.body.classList.toggle("voice-speaking", state === "speaking");
+  $("#input").placeholder = !V.on ? "Ask Sprout…" : state === "speaking" ? "Speaking… (talk to interrupt)"
+    : state === "hearing" ? "Listening…" : S.streaming ? "Thinking…" : "Talk to Sprout, or type";
+}
+
 async function toggleVoice() {
   if (V.starting) return;
   if (V.on) return stopVoice();

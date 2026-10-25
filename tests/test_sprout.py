@@ -612,6 +612,61 @@ class Voice(unittest.TestCase):
                 server.SETTINGS_FILE = orig
 
 
+class KeepAlive(unittest.TestCase):
+    def test_requests_in_a_row_on_one_connection(self):
+        """Browsers reuse a connection. An unread body ("{}" to /api/voice/start) once turned the next request into
+        "{}GET ..." (501), and a body cached across requests turned audio bytes into the next method name."""
+        import http.client
+        import threading
+        srv = server.Server(("127.0.0.1", 0), server.Handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+            h = {"Origin": f"http://127.0.0.1:{server.APP_PORT}", "Content-Type": "application/json"}
+            for method, path, body, want in [("POST", "/api/bye", "{}", 200),  # body not used by the endpoint
+                                             ("GET", "/static/voice-worklet.js", None, 200),
+                                             ("POST", "/api/voice/audio", b"\x00" * 3200, 200),
+                                             ("POST", "/api/bye", "{}", 200),
+                                             ("GET", "/static/app.js", None, 200)]:
+                c.request(method, path, body, h if method == "POST" else {})
+                r = c.getresponse()
+                r.read()
+                self.assertEqual(r.status, want, f"{method} {path}")
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+
+class UiScript(unittest.TestCase):
+    def test_every_called_function_is_defined(self):
+        """A plain function the UI calls must exist (a rewrite once deleted voiceState, and voice mode failed
+        with "voiceState is not defined", which a syntax check can't see)."""
+        import re
+        js = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "static", "app.js"),
+                  encoding="utf-8").read()
+        defined = set(re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)", js))
+        defined |= set(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=", js))
+        for params in re.findall(r"\(([^()]*)\)\s*(?:=>|\{)", js):  # parameters and destructured names
+            defined |= set(re.findall(r"[A-Za-z_$][\w$]*", params))
+        defined |= set(re.findall(r"\b([A-Za-z_$][\w$]*)\s*=>", js))
+        # where calls are looked for: comments and one-line string literals removed, line by line
+        lines = []
+        for line in js.splitlines():
+            if "//" in line and not re.search(r"https?://|['\"`][^'\"`]*//", line):
+                line = line.split("//")[0]
+            lines.append(re.sub(r"`[^`]*`|\"[^\"\n]*\"|'[^'\n]*'", '""', line))
+        code = "\n".join(lines)
+        builtins = {"if", "for", "while", "switch", "catch", "return", "typeof", "function", "await", "new", "fetch",
+                    "setTimeout", "setInterval", "clearTimeout", "clearInterval", "requestAnimationFrame", "confirm",
+                    "alert", "encodeURIComponent", "decodeURIComponent", "parseInt", "parseFloat", "Number", "String",
+                    "Boolean", "Array", "Object", "JSON", "Math", "Date", "Promise", "Error", "Set", "Map", "Uint8Array",
+                    "AudioContext", "AudioWorkletNode", "FileReader", "Image", "URL", "Blob", "TextDecoder", "marked",
+                    "DOMPurify", "katex", "renderMathInElement", "hljs", "AbortController", "isNaN", "super", "import",
+                    "async", "File", "MATH"}  # MATH: the @@MATH(\d+)@@ placeholder inside a regular expression
+        called = {m for m in re.findall(r"(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(", code)}
+        self.assertEqual(sorted(called - defined - builtins), [])
+
+
 class Plugins(unittest.TestCase):
     """The MCP host and the Python sandbox, against a fake MCP server (nothing on the laptop is touched)."""
 

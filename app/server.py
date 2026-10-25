@@ -1112,8 +1112,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _body(self):
-        n = int(self.headers.get("Content-Length") or 0)
-        return self.rfile.read(n) if n else b""
+        """The request body, read once. Every POST reads it, used or not: an unread body (voice/start's "{}")
+        stays in a kept-alive connection, and the browser's next request on it was parsed as "{}GET ..." (501)."""
+        if not hasattr(self, "_raw_body"):
+            n = int(self.headers.get("Content-Length") or 0)
+            self._raw_body = self.rfile.read(n) if n else b""
+        return self._raw_body
 
     def _same_origin(self):
         """Refuse cross-site requests: only the app's own page may call the API."""
@@ -1185,6 +1189,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self):
+        # one handler object serves every request on a kept-alive connection: forget the last body, read this one
+        self.__dict__.pop("_raw_body", None)
+        self._body()  # always consume the body, so the connection stays in step (see _body)
         if not self._same_origin():
             return self._json({"error": "forbidden"}, 403)
         STATE["last_seen"] = time.time()
@@ -1278,6 +1285,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def do_DELETE(self):
+        self.__dict__.pop("_raw_body", None)
+        self._body()
         if not self._same_origin():
             return self._json({"error": "forbidden"}, 403)
         path = urllib.parse.urlparse(self.path).path

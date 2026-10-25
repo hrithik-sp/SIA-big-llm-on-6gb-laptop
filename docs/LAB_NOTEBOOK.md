@@ -1576,6 +1576,22 @@ Goal: Sprout separate from Edge, quick and smooth.
         now "about 920 metres".
     - **Needs a person:** the first microphone permission prompt, real speech with the owner's own voice and
       accent, and choosing the voice by ear.
+    - **The owner's first real test found three bugs the server-side check couldn't see**, so a check through the
+      real page was added (`tools/sprout_ui_voice_check.py`: headless Edge with a fake microphone playing a spoken
+      question, the real mic button clicked over the DevTools protocol). It found the bugs one after another:
+      - a rewrite had deleted a UI function ("voiceState is not defined");
+      - an unread request body ("{}") stayed in the kept-alive connection, so the browser's next request was parsed
+        as "{}GET …" and the audio worklet failed to load (HTTP 501);
+      - caching the body to fix that kept it across requests on the same connection, so audio bytes became the
+        next request's method.
+
+      After the fixes the check passes: "Who created you?" was heard and answered ("Hrithik S P created and built
+      me."), the answer was spoken, and the page had no errors. New unit tests check that every function the UI
+      calls exists and that requests in a row on one connection stay in step (84 tests).
+    - **Interruptions, after the owner's test:** at full volume, Sprout's own echo stopped it mid-sentence and
+      cancelled the next reply. Now, as in LiveKit Agents (docs: turn-taking tuning), speech pauses Sprout's voice
+      and only real words stop it. An echo of what it just said (also checked for 3 s after it stops), a short
+      "okay" or "mm-hm", or noise resumes it, and the first 0.7 s of a reply never pauses it.
 
 ## Optimization candidates (each must be measured before it counts)
 
