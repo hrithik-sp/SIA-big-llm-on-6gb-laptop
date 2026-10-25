@@ -607,7 +607,7 @@ class Voice(unittest.TestCase):
                 self.assertFalse(body["chat_template_kwargs"]["enable_thinking"])  # no silent thinking pause
                 body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "hi"}]})
                 self.assertNotIn("Spoken reply", body["messages"][-1]["content"])
-                self.assertEqual(server.load_settings()["voice_name"], "am_michael")
+                self.assertEqual(server.load_settings()["voice_name"], "af_heart")
             finally:
                 server.SETTINGS_FILE = orig
 

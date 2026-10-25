@@ -132,13 +132,13 @@ function renderSettings() {
   const sv = $("#set-voice");
   if (st.voices && sv.options.length !== st.voices.length) {  // best first within each group (Kokoro's grades)
     sv.innerHTML = "";
-    for (const [gender, label] of [["male", "Male"], ["female", "Female"]]) {
+    for (const [gender, label] of [["female", "Female"], ["male", "Male"]]) {
       const g = el("optgroup"); g.label = label;
       for (const v of st.voices.filter((x) => x.gender === gender)) { const o = el("option", null, `${v.name} (${v.accent})`); o.value = v.id; g.append(o); }
       sv.append(g);
     }
   }
-  sv.value = st.voice_name || "am_michael";
+  sv.value = st.voice_name || "af_heart";
   const al = $("#set-allowed"); al.innerHTML = "";
   for (const id of st.always_allow) {
     const tool = st.tools.find((t) => t.id === id); if (!tool) continue;

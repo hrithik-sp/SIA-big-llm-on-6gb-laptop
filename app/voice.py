@@ -35,7 +35,7 @@ PARAKEET = VOICE_DIR / "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-i
 VAD_MODEL = VOICE_DIR / "silero_vad.onnx"
 RATE = 16000  # microphone audio, as the VAD and recogniser expect
 WINDOW = 512  # samples per VAD step (32 ms)
-DEFAULT_VOICE = "am_michael"
+DEFAULT_VOICE = "af_heart"  # the owner's choice; also Kokoro's top-graded voice (A)
 # Kokoro's English voices graded C or better by its author (hexgrad/Kokoro-82M VOICES.md, "Overall Grade",
 # an estimate of the quality and quantity of each voice's training data), best first. D-graded voices
 # (Adam, Onyx, Echo, Eric, Liam, Alice, Lily, ...) sound noticeably less natural and are left out.

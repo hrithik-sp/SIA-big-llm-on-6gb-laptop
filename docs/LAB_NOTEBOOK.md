@@ -1546,8 +1546,8 @@ Goal: Sprout separate from Edge, quick and smooth.
 
     - **Voices:** the 12 English voices graded C or better by Kokoro's author (VOICES.md "Overall Grade"),
       best first: female Heart (A), Bella (A−), Nicole and Emma (B−), Aoede, Kore and Sarah (C+); male
-      Michael, Fenrir and Puck (C+), George and Fable (C). D-graded voices are left out. Default: Michael
-      (the owner asked for a male voice). British voices load the British pronunciation dictionary.
+      Michael, Fenrir and Puck (C+), George and Fable (C). D-graded voices are left out. Default: Heart (the
+      owner's choice after hearing them; first Michael, when a male voice was asked for). British voices load the British pronunciation dictionary.
     - **In the app:** a microphone button in the same window. The browser captures audio with its echo
       cancellation, so you can interrupt Sprout mid-sentence by talking. Your words and its replies appear
       as normal chat messages. The reply is spoken sentence by sentence while it is still being written,

@@ -94,7 +94,7 @@ button again to stop.
   Parakeet 110M turns your speech into text (about 0.1 s), and Kokoro-82M speaks the reply sentence
   by sentence while it is still being written.
 - **12 natural voices**, male and female, American and British. Choose one in Settings and press
-  Preview to hear it. The default is Michael.
+  Preview to hear it. The default is Heart (female, the highest-graded voice).
 - The voice models load when voice mode starts and are freed when it stops (about 0.7 GB of RAM).
   With Gemma 26B on 16 GB, replies start about 4–5 s after you stop talking while Chrome and VS Code
   are open, and sooner with more free RAM.
