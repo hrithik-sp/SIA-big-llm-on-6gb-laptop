@@ -625,10 +625,10 @@ const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]
 // talking nearby is never answered, and while Sprout speaks only "Hey Sprout", "stop" or "wait" interrupt it.
 // (In always-listening mode a friend's conversation was answered line by line.)
 const STOP_RX = /^\W*(stop|wait|hold on|shut up|enough|pause|be quiet|quiet|cancel)\b/i;
-const WAKE_RX = /^\W*(?:(?:hey|hi|hay|he|ok(?:ay)?|hello|a|yo)\W+)?(?:sprout\w*|s?trouts?|spouts?|sprites?|prouds?|scouts?)\b[\s,.!?]*/i;
 function onVoiceEvent(ev) {
   if (ev.type === "wake") {
-    if (V.playing || V.say.length || S.streaming) bargeIn();  // "Hey Sprout" while it talks: it stops and listens
+    // the spotter's quick guess: pause, and let the transcript decide (it once fired on "Hey, see you tomorrow")
+    if ((V.playing || V.say.length) && performance.now() - V.speakingSince > 700) pauseSpeech();
     voiceState("hearing");
   } else if (ev.type === "speech_start") {
     voiceState("hearing");
@@ -643,10 +643,10 @@ function onVoiceEvent(ev) {
     }
     const justSpoke = performance.now() - V.lastEnd < 3000;  // recognition ends ~0.6 s after the sound does
     if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) { resumeSpeech(); return; }
-    const text = V.listen === "wake" ? ev.text.replace(WAKE_RX, "").trim() : ev.text;
+    const text = ev.wake ? ev.request : ev.text;  // the server strips the wake phrase
     if (speaking || S.streaming) bargeIn();  // real words: Sprout stops and answers them
     voiceState("idle");
-    if (!/\w/.test(text) || (V.listen === "wake" && text.split(/\s+/).length < 2 && WAKE_RX.test(ev.text))) {
+    if (!/\w/.test(text)) {
       queueSpeech("Yes?"); followUp(); return;  // just "Hey Sprout": acknowledge, then listen for the request
     }
     askByVoice(text.charAt(0).toUpperCase() + text.slice(1));

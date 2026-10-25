@@ -617,6 +617,41 @@ class Voice(unittest.TestCase):
         L.mode = "always"
         self.assertTrue(L._addressed(40 * R, 42 * R))
 
+    def test_wake_phrase_in_the_transcript(self):
+        """"Hey Sia" as the recogniser writes it decides; "see you", "Sierra Leone", "Asia" and "sir" (without the
+        keyword spotter) don't wake Sia."""
+        split = server.voice.wake_split
+        for said, request in [("Hey Sia, what time is it?", "what time is it?"), ("hey sia.", ""),
+                              ("He sia, play some music.", "play some music."), ("Okay Cia, open Chrome.", "open Chrome."),
+                              ("Hi Sier, set a timer.", "set a timer."), ("Sia, what's the weather?", "what's the weather?"),
+                              ("Hello, Siya.", "")]:
+            self.assertEqual(split(said), (True, request), said)
+        for said in ["Hey, see you tomorrow.", "Hey, Sierra Leone is in Africa.", "Asia is a big continent.",
+                     "Hey Siri, call mom.", "Hey sir, can I help?", "I see a bird.", "Sierra is my cousin."]:
+            self.assertFalse(split(said)[0], said)
+        self.assertEqual(split("Hey sir, what time is it?", spotted=True), (True, "what time is it?"))
+
+    def test_heteronyms_by_context(self):
+        """"Share your live location" vs "I live here": a one-entry dictionary got 17 of 32 such cases right,
+        misaki (part-of-speech aware) 29. Runs only where misaki is installed (it's optional)."""
+        import re
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+        from heteronym_cases import CASES
+        try:
+            import misaki  # noqa: F401
+        except ImportError:
+            self.skipTest("misaki isn't installed")
+        if not server.voice.available():
+            self.skipTest("the voice models aren't installed")
+        server.voice.load_tts("af_heart")
+        tts = server.voice._M["tts"]
+        right = 0
+        for sentence, word, want in CASES:
+            _, toks = tts.g2p(sentence)
+            right += bool(re.search(want, next((t.phonemes or "" for t in toks if t.text.lower() == word), "")))
+        self.assertGreaterEqual(right, 28, f"{right}/{len(CASES)} heteronyms right")
+        server.voice.unload()
+
     def test_voice_list(self):
         ids = server.voice.VOICE_IDS
         self.assertEqual(len(ids), len(set(ids)))

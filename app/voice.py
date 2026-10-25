@@ -38,8 +38,25 @@ WINDOW = 512  # samples per VAD step (32 ms)
 PREROLL = int(0.3 * RATE)  # audio kept from just before detected speech
 HEARD_MAX = 30 * RATE  # recent audio kept for that
 KWS = VOICE_DIR / "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
-WAKE_FILE = Path(__file__).resolve().parent / "data" / "wake_words.txt"  # Hey/Hi/OK/Okay/Hello Sprout, as BPE pieces
+WAKE_FILE = Path(__file__).resolve().parent / "data" / "wake_words.txt"  # Hey/Hi/OK/Okay/Hello Sia, as BPE pieces
+HOTWORDS = Path(__file__).resolve().parent / "data" / "hotwords.txt"  # words the recogniser is nudged towards
+HOTWORD_SCORE = 1.5
 WAKE_LEAD = 2 * RATE  # a wake hit this long after a segment ends still counts for it (decoding lags a little)
+# "Hey Sia" as the recogniser writes it. "Sia" is short and sounds like "see ya", so the keyword spotter alone was
+# weak (10/30 caught) or, with more spellings, fired on "Hey, see you tomorrow" (16/66). With the recogniser nudged
+# towards "sia" (HOTWORDS), this rule on its transcript caught 40/48 spoken wake phrases in six voices, with 1 false
+# alarm in 66 other phrases ("Okay, see ya", which sounds the same). "Sir" counts only when the spotter also heard it.
+_GREET = r"^\W*(?:(?:hey|hi|hay|he|ok(?:ay)?|hello|yo)\W+)"
+WAKE_TEXT = re.compile(
+    rf"(?:{_GREET}(?:sia|siya|siah|sier|siera|sierra(?!\W+leone)|cia|xia|zia)|^\W*(?:sia|siya|siah))\b(?!\W+(?:is|was)\b)"
+    r"[\s,.!?]*", re.I)
+WAKE_SIR = re.compile(rf"{_GREET}sir\b[\s,.!?]*", re.I)
+
+
+def wake_split(text, spotted=False):
+    """(was the wake phrase said, the request after it). spotted: the keyword spotter heard it in this segment."""
+    m = WAKE_TEXT.match(text) or (spotted and WAKE_SIR.match(text))
+    return (True, text[m.end():].strip()) if m else (False, text.strip())
 FOLLOW_UP_S = 8  # after the wake phrase, or after Sprout answers: speech without the wake phrase is still for Sprout
 DEFAULT_VOICE = "af_heart"  # the owner's choice; also Kokoro's top-graded voice (A)
 # Kokoro's English voices graded C or better by its author (hexgrad/Kokoro-82M VOICES.md, "Overall Grade",
@@ -79,14 +96,76 @@ def _speaker_ids():
     return {n: k for k, n in enumerate(names)}
 
 
+NAMES = {"Sia": "sˈiə", "Hrithik": "ɹˈɪθɪk"}  # misaki phonemes for names (the H in Hrithik is silent)
+
+
+class _Spoken:
+    def __init__(self, samples, sample_rate):
+        self.samples, self.sample_rate = samples, sample_rate
+
+
+class _MisakiKokoro:
+    """Kokoro, with its pronunciation chosen by misaki (hexgrad/misaki, Kokoro's own G2P, Apache-2.0), which
+    tags each word's part of speech with spaCy before picking a pronunciation. The sherpa-onnx path looks each
+    word up in a dictionary with one pronunciation, so heteronyms were a coin toss: "I live here" was read
+    "laiv", "I read it yesterday" "reed". On tools/heteronym_cases.py the dictionary got 17/32 right and misaki
+    29/32. The same model file and voices run directly in onnxruntime; it is also faster (RTF 0.28 vs 0.38)."""
+
+    def __init__(self, british):
+        import onnxruntime as ort
+        from misaki import en, espeak
+        self.g2p = en.G2P(trf=False, british=british, fallback=espeak.EspeakFallback(british=british))
+        for word, sounds in NAMES.items():  # names it has never seen ("Sia" came out as "zhuh")
+            for form in (word, word.lower(), word.upper()):
+                self.g2p.lexicon.golds[form] = sounds
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = int(os.environ.get("SPROUT_TTS_THREADS", "4"))
+        self.sess = ort.InferenceSession(str(KOKORO / "model.onnx"), opts, providers=["CPUExecutionProvider"])
+        self.vocab = {}
+        for line in (KOKORO / "tokens.txt").read_text(encoding="utf-8").splitlines():
+            sym, _, idx = line.rpartition(" ")
+            if idx.isdigit():
+                self.vocab[sym or " "] = int(idx)
+        self.styles = np.fromfile(KOKORO / "voices.bin", dtype=np.float32).reshape(-1, 510, 1, 256)
+
+    def phonemes(self, text):
+        return self.g2p(text)[0]
+
+    def generate(self, text, sid=0, speed=1.0):
+        ids = [self.vocab[c] for c in self.phonemes(text) if c in self.vocab]
+        out = []
+        for i in range(0, len(ids), 500):  # the model takes up to 510 tokens at a time
+            part = ids[i:i + 500]
+            audio = self.sess.run(None, {"tokens": np.array([[0, *part, 0]], dtype=np.int64),
+                                         "style": self.styles[sid, min(len(part), 509)],
+                                         "speed": np.array([speed], dtype=np.float32)})[0]
+            out.append(np.asarray(audio, dtype=np.float32).reshape(-1))
+        return _Spoken(np.concatenate(out) if out else np.zeros(0, np.float32), 24000)
+
+
+def phonemes(text, voice=DEFAULT_VOICE):
+    """How Sia will pronounce the text (misaki phonemes), or None without misaki. For tests."""
+    load_tts(voice)
+    return _M["tts"].phonemes(text) if isinstance(_M["tts"], _MisakiKokoro) else None
+
+
 def load_tts(voice=DEFAULT_VOICE):
-    """Load the voice with the pronunciation dictionary of its accent (American or British): with both,
-    the first dictionary wins on every shared word, so British voices would get American pronunciations."""
+    """Load the voice for its accent (American or British). misaki when it's installed; otherwise sherpa-onnx with
+    the accent's pronunciation dictionary (with both dictionaries, the first wins on every shared word)."""
     import sherpa_onnx
     lexicon = "lexicon-gb-en.txt" if str(voice).startswith("b") else "lexicon-us-en.txt"
     with _lock:
         if _M["tts"] is None or _M["lexicon"] != lexicon:
             _M["tts"] = None
+            if os.environ.get("SPROUT_G2P", "misaki") == "misaki":
+                try:
+                    _M["tts"] = _MisakiKokoro(british=lexicon.startswith("lexicon-gb"))
+                    _M["lexicon"] = lexicon
+                    _M["speakers"] = _M["speakers"] or _speaker_ids()
+                    _M["tts"].generate("Okay.", sid=0)  # the first synthesis is slow (set-up): do it now
+                    return
+                except Exception:  # misaki or onnxruntime missing or broken: the dictionary voice still works
+                    _M["tts"] = None
             _M["tts"] = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(
                 model=sherpa_onnx.OfflineTtsModelConfig(
                     kokoro=sherpa_onnx.OfflineTtsKokoroModelConfig(
@@ -131,7 +210,24 @@ def load(voice=DEFAULT_VOICE):
             _M["stt"] = sherpa_onnx.OfflineRecognizer.from_transducer(
                 encoder=str(PARAKEET / "encoder.int8.onnx"), decoder=str(PARAKEET / "decoder.int8.onnx"),
                 joiner=str(PARAKEET / "joiner.int8.onnx"), tokens=str(PARAKEET / "tokens.txt"),
-                num_threads=4, model_type="nemo_transducer")
+                num_threads=4, model_type="nemo_transducer", **_hotword_args())
+
+
+def _hotword_args():
+    """Contextual biasing (sherpa-onnx hotwords: modified beam search plus an Aho-Corasick graph of the hotwords'
+    pieces) so the recogniser writes "Sia" instead of "see ya" / "sir". It needs a BPE vocabulary; Parakeet ships
+    only tokens.txt, so one is written from it (piece, then a score that favours earlier, more frequent pieces).
+    +12 ms per 3.8 s sentence."""
+    vocab = PARAKEET / "bpe.vocab"
+    try:
+        if not vocab.exists():
+            with open(PARAKEET / "tokens.txt", encoding="utf-8") as f:
+                rows = [line.rstrip("\n").rsplit(" ", 1) for line in f if line.strip()]
+            vocab.write_text("".join(f"{tok}\t{-float(i)}\n" for tok, i in rows), encoding="utf-8")
+    except OSError:
+        return {}
+    return dict(decoding_method="modified_beam_search", max_active_paths=4, hotwords_file=str(HOTWORDS),
+                hotwords_score=HOTWORD_SCORE, modeling_unit="bpe", bpe_vocab=str(vocab))
 
 
 def unload():
@@ -226,10 +322,13 @@ class Listener:
         """Open (or close, with 0) the follow-up window: speech starting in it needs no wake phrase."""
         self.awake_until = self.fed + int(seconds * RATE) if seconds > 0 else 0
 
+    def _spotted(self, start, end):
+        return any(start - RATE <= h <= end + WAKE_LEAD for h in self.wake_hits)
+
     def _addressed(self, start, end):
-        if self.mode == "always":
-            return True
-        return start < self.awake_until or any(start - RATE <= h <= end + WAKE_LEAD for h in self.wake_hits)
+        """A first guess, while the speech is still going (to pause Sia's voice): follow-up window or spotter hit.
+        The transcript decides (_transcriber)."""
+        return self.mode == "always" or start < self.awake_until or self._spotted(start, end)
 
     def feed(self, pcm16):
         """Raw 16-bit little-endian mono 16 kHz audio from the browser."""
@@ -248,8 +347,7 @@ class Listener:
                 if self.kws.get_result(self.kws_stream):
                     self.kws.reset_stream(self.kws_stream)
                     self.wake_hits = [h for h in self.wake_hits if h > self.fed - 60 * RATE] + [self.fed]
-                    self.awake(FOLLOW_UP_S)  # the request may follow a pause: "Hey Sprout ... what time is it?"
-                    self.events.put({"type": "wake"})
+                    self.events.put({"type": "wake"})  # tentative: Sia's voice pauses until the transcript decides
         done = 0
         while len(self.pending) >= WINDOW:
             self.vad.accept_waveform(self.pending[:WINDOW])
@@ -263,8 +361,9 @@ class Listener:
             while not self.vad.empty():
                 seg = self.vad.front
                 samples = np.array(seg.samples, dtype=np.float32)
+                end = seg.start + len(samples)
                 self.work.put((self._with_preroll(seg.start, samples),
-                               self._addressed(seg.start, seg.start + len(samples))))
+                               self.mode == "always" or seg.start < self.awake_until, self._spotted(seg.start, end)))
                 self.vad.pop()
 
     def _with_preroll(self, start, samples):
@@ -278,7 +377,7 @@ class Listener:
     def _transcriber(self):
         while not self.closed:
             try:
-                seg, addressed = self.work.get(timeout=0.5)
+                seg, in_window, spotted = self.work.get(timeout=0.5)
             except queue.Empty:
                 continue
             try:
@@ -287,8 +386,11 @@ class Listener:
                 self.events.put({"type": "error", "error": f"speech recognition failed: {e}"})
                 continue
             if re.search(r"\w", text):
-                self.events.put({"type": "transcript", "text": text, "addressed": addressed,
-                                 "seconds": round(len(seg) / RATE, 2)})
+                woke, request = wake_split(text, spotted) if self.mode == "wake" else (False, text)
+                if woke and not request:
+                    self.awake(FOLLOW_UP_S)  # just "Hey Sia": the request follows after a pause
+                self.events.put({"type": "transcript", "text": text, "addressed": in_window or woke, "wake": woke,
+                                 "request": request, "seconds": round(len(seg) / RATE, 2)})
             else:
                 self.events.put({"type": "speech_end"})  # a cough or noise: nothing to answer
 
