@@ -673,13 +673,20 @@ def laptop_summary():
     return ", ".join(parts)
 
 
-def now_context():
-    """One line for every request: the laptop's current date, time, time zone and region."""
+def now_context(days=False):
+    """One line for every request: the laptop's current date, time, time zone and region. With days=True, also the
+    next seven dates with their weekdays: asked for a study plan "starting today" on a Monday, Sia once headed it
+    "Tuesday (Today)"."""
     rt, now = region_and_timezone(), dt.datetime.now()
     clock = now.strftime("%I:%M %p").lstrip("0")
     region = f" Windows region: {rt['windows_region']}." if rt["windows_region"] else ""
+    ahead = ""
+    if days:
+        d = [now + dt.timedelta(days=i) for i in range(8)]
+        ahead = (f" Dates: today {d[0]:%A} {d[0].day} {d[0]:%b}, tomorrow {d[1]:%A} {d[1].day} {d[1]:%b}, then "
+                 + ", ".join(f"{x:%A} {x.day} {x:%b}" for x in d[2:]) + ".")
     return (f"Right now on this laptop: {now:%A, %d %B %Y}, {now:%H:%M} ({clock}), "
-            f"{rt['time_zone']} (UTC{rt['utc_offset']}).{region}")
+            f"{rt['time_zone']} (UTC{rt['utc_offset']}).{region}{ahead}")
 
 
 # --------------------------------------------------------------------------- registry

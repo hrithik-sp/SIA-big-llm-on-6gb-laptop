@@ -788,7 +788,8 @@ TOOL_GUIDE = ("You can look things up on the user's laptop with the provided rea
               + "; ".join(f"{k} {v}" for k, v in tools.user_folders().items()) + ".")
 REASONING_RX = re.compile(
     r"\b(calculate|compute|solve|when (do|will|would|should|can) (i|we)|what time (will|would|should|do)|"
-    r"which is (better|cheaper|faster)|compare|plan (my|a|the)|schedule|prove|step by step|explain why|"
+    r"which is (better|cheaper|faster)|compare|plan (my|a|the)|(study|exam|revision|weekly|daily|trip|travel|workout|diet) plan|"
+    r"make (me )?an? [\w ]{0,20}plan|timetable|schedule|prove|step by step|explain why|"
     r"why (does|is|do|did))\b", re.I)
 # "how many/much/long" is arithmetic only with a number or a time span ("how many days until 15 November"),
 # not a lookup ("how many tabs do I have open?", which a tool answers)
@@ -874,6 +875,11 @@ def is_bare_math(text):
     """Just an expression ("11*2", "calculate and tell 876*88894"): the calculator answers it, no thinking."""
     rest = FILLER_MATH_RX.sub(" ", text or "")
     return bool(re.search(r"\d", rest)) and not re.search(r"[^\d\s.,+\-*/xX×÷^()%!=?]", rest)
+
+
+# messages about days get the coming dates with their weekdays in the note (tools.now_context)
+DAYS_RX = re.compile(r"\b(today|tonight|tomorrow|yesterday|weekend|(this|next|coming) week|days?|"
+                     r"(mon|tues|wednes|thurs|fri|satur|sun)day|plan|schedule|timetable|deadline|exams?|due)\b", re.I)
 
 
 def needs_reasoning(text):
@@ -1067,7 +1073,7 @@ def build_request(req):
                  " Just an acknowledgement: reply in a few words or less (\"Sure.\", \"Anytime.\"), with no question"
                  + (", and it is not a game move: call no tool (\"ok\" during Wordle once became a made-up guess)."
                     if game else ".") if ACK_RX.match(last_text) else "")
-        stamp = (f"[Sia note, not written by the user; never mention it: {tools.now_context()}"
+        stamp = (f"[Sia note, not written by the user; never mention it: {tools.now_context(bool(DAYS_RX.search(last_text)))}"
                  f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{greet}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):

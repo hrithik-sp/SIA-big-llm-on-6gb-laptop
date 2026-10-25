@@ -158,7 +158,7 @@ def scenarios():
          lambda rs: ((bool(re.search(r"don't know|haven't (told|mentioned|said)|didn't (tell|mention|say)|not sure|no idea|"
                                      r"don't have|can't see", rs[0]["answer"], re.I))
                       or (bool(rs[0]["tools"]) and bool(re.search(r"(couldn't|could not|didn't|did not) find|nothing (came up|about)|"
-                                                                   r"no (appointment|exam|files?|dates?)", rs[0]["answer"], re.I))))
+                                                                   r"(don't|do not) see any|no (\w+ )?(appointments?|exams?|files?|dates?)", rs[0]["answer"], re.I))))
                      and not re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", rs[0]["answer"], re.I),
                      f"tools {rs[0]['tools']}: {rs[0]['answer'][:80]!r}")),
         ("other chats", "chat", ["what did we talk about yesterday?"],

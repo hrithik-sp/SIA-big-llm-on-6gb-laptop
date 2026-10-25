@@ -153,9 +153,9 @@ class SettingsAndTools(unittest.TestCase):
         msgs = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hey"},
                 {"role": "user", "content": "what time is it?"}]
         try:
-            server.tools.now_context = lambda: "Right now on this laptop: 10:00"
+            server.tools.now_context = lambda days=False: "Right now on this laptop: 10:00"
             a, _, _ = server.build_request({"mode": "chat", "messages": msgs})
-            server.tools.now_context = lambda: "Right now on this laptop: 10:01"
+            server.tools.now_context = lambda days=False: "Right now on this laptop: 10:01"
             b, _, _ = server.build_request({"mode": "chat", "messages": msgs})
         finally:
             server.tools.now_context = orig
@@ -265,12 +265,25 @@ class SettingsAndTools(unittest.TestCase):
                              ("how many days until 15 November?", True), ("yo", False),
                              ("what time is it?", False), ("find my aadhaar card", False),
                              ("how many tabs do I have open?", False), ("how much RAM is free?", False),
-                             ("how many hours until my 5 pm meeting?", True)):
+                             ("how many hours until my 5 pm meeting?", True),
+                             ("Make me a quick study plan, 3 hours a day starting today", True),
+                             ("what's the plan?", False)):
             body, _, _ = server.build_request({"mode": "chat", "think": False,
                                                "messages": [{"role": "user", "content": text}]})
             self.assertEqual(body["chat_template_kwargs"]["enable_thinking"], expect, text)
         body, _, _ = server.build_request({"mode": "chat", "think": False, "messages": [{"role": "user", "content": "yo"}]})
         self.assertNotIn("tool_choice", body)
+
+    def test_day_questions_get_the_coming_weekdays(self):
+        def note(text):
+            body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": text}]})
+            return body["messages"][-1]["content"]
+        import datetime
+        tomorrow = datetime.datetime.now() + datetime.timedelta(days=1)
+        n = note("make me a study plan starting today, exam on Friday")
+        self.assertIn("tomorrow ", n)
+        self.assertIn(f"{tomorrow:%A} {tomorrow.day} {tomorrow:%b}", n)
+        self.assertNotIn(" Dates: ", note("who is aryabhata?"))
 
     def test_long_chats_are_trimmed_to_fit(self):
         short = [{"role": "user", "content": "hi"}]
