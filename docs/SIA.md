@@ -1,13 +1,13 @@
-# Sprout: a private, offline AI for a 6 GB laptop
+# Sia: a private, offline AI for a 6 GB laptop
 
-Sprout is a one-click desktop app that runs the setups measured in this project:
+Sia is a one-click desktop app that runs the setups measured in this project:
 Google's Gemma 4 26B (QAT) at about 31 tok/s and OpenAI's gpt-oss-20b at its released
 precision. Everything runs on the laptop. Nothing is sent anywhere, and the app works
 with the network cable pulled.
 
 <p align="center">
-  <img src="images/sprout-home.png" alt="Sprout's home screen: one input box, eight mode chips, live vitals top-right" width="49%">
-  <img src="images/sprout-study.png" alt="Sprout in Study mode explaining Dijkstra's algorithm with a worked example" width="49%">
+  <img src="images/sia-home.png" alt="Sia's home screen: one input box, eight mode chips, live vitals top-right" width="49%">
+  <img src="images/sia-study.png" alt="Sia in Study mode explaining Dijkstra's algorithm with a worked example" width="49%">
 </p>
 
 *Left: the home screen. Right: a real Study-mode answer (Gemma 4 QAT, 32.7 tok/s, captured
@@ -27,8 +27,8 @@ from a fresh test profile; the worked example was checked by hand).*
 | **Think deep** | gpt-oss-20b, reasoning high | Hard maths, proofs, logic |
 
 **Laptop integration:**
-- `Ctrl+Alt+Space` summons Sprout from anywhere; it appears in about 0.1 s.
-- **Ask Sprout** on any file's right-click menu in File Explorer.
+- `Ctrl+Alt+Space` summons Sia from anywhere; it appears in about 0.1 s.
+- **Ask Sia** on any file's right-click menu in File Explorer.
 - A screen-snip button, clipboard import (text, images, copied files) and drag and drop.
 - Tiny live vitals (CPU, RAM, GPU temperature, VRAM) and a status panel with
   "Free memory now".
@@ -44,7 +44,7 @@ installed apps, clipboard text, recent and recently opened files, and listing, s
 (text, PDF, Word). Every call shows a card with the exact path: **Allow once**, **Always
 allow** or **Deny**.
 
-**Acting on the laptop, with permission.** Sprout can also do things:
+**Acting on the laptop, with permission.** Sia can also do things:
 - **Open:** apps (by name, from the Start menu), documents, folders, websites and Settings pages.
 - **Control:** volume and mute, brightness, Bluetooth and Wi-Fi, dark or light theme, and music or
   video playback.
@@ -57,25 +57,25 @@ allow** or **Deny**.
   percentages, money, doses, scientific and engineering formulas (sqrt, logs, trig in degrees or
   radians, factorials, statistics). It reads nothing, so there's no approval card.
 - **Undo and cancel:** "undo that", "put the volume back", "cancel the tea timer", "never mind the
-  shutdown", "clear all my reminders". Sprout reverses what it did earlier; files are never deleted.
+  shutdown", "clear all my reminders". Sia reverses what it did earlier; files are never deleted.
 
 Each action shows a card saying exactly what will happen ("Set volume to 30%"). Turn actions off in
-Settings ("Let Sprout act on this laptop") and Sprout goes back to reading only.
+Settings ("Let Sia act on this laptop") and Sia goes back to reading only.
 
 ### General abilities: a Python sandbox and plug-ins
 
-Instead of a new special-purpose tool for every kind of question, Sprout has two general mechanisms:
+Instead of a new special-purpose tool for every kind of question, Sia has two general mechanisms:
 
-- **`run_python`:** the model writes a short Python program and Sprout runs it in
+- **`run_python`:** the model writes a short Python program and Sia runs it in
   [Pydantic Monty](https://github.com/pydantic/monty), a locked-down Python interpreter written in
   Rust. It runs in its own process with no files, network, programs or environment variables, a
   5-second limit and 256 MB of memory. It covers dates, conversions, sorting, counting, text and
-  multi-step calculations. Sprout lends it pure functions (`calendar`, `statistics`, `string`, the
+  multi-step calculations. Sia lends it pure functions (`calendar`, `statistics`, `string`, the
   exact calculator and number words) and the laptop's time zone.
-- **MCP plug-ins** (`app/mcp.json`, `app/mcp_host.py`): Sprout is a host for the
+- **MCP plug-ins** (`app/mcp.json`, `app/mcp_host.py`): Sia is a host for the
   [Model Context Protocol](https://modelcontextprotocol.io), the common plug-in format for AI tools,
   so existing tool servers work without new code. Each plug-in tool reaches the model only if
-  `mcp.json` lists it, with Sprout's rules: which approval card it needs, arguments Sprout fixes
+  `mcp.json` lists it, with Sia's rules: which approval card it needs, arguments Sia fixes
   itself, allowed and blocked values, and the card's wording.
   - **Memory** (the reference `server-memory`): remembers lasting facts you tell it (people, your
     devices, preferences) across chats. Each save is approved on a card; "forget …" shows exactly
@@ -86,13 +86,16 @@ Instead of a new special-purpose tool for every kind of question, Sprout has two
 
 ### Voice mode
 
-Tap the microphone button and say **"Hey Sprout"**, then your request ("Hey Sprout, what time is it?"). Sprout answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored; while Sprout speaks, "Hey Sprout", "stop" or "wait" interrupt it. The pause button stops listening; Settings has "Always listening" for when you're alone.
+Tap the microphone button and say **"Hey Sia"**, then your request ("Hey Sia, what time is it?"). Sia answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored; while Sia speaks, "Hey Sia", "stop" or "wait" interrupt it. The pause button stops listening; Settings has "Always listening" for when you're alone.
 It is the same model and personality, answering in a spoken style. Talk over it to interrupt; tap the
 button again to stop.
 
 - **Offline, on the CPU** (sherpa-onnx): Silero VAD notices when you start and stop talking, NVIDIA
   Parakeet 110M turns your speech into text (about 0.1 s), and Kokoro-82M speaks the reply sentence
   by sentence while it is still being written.
+- **"Hey Sia"** is checked on what was heard: the recogniser is nudged towards the name, and speech counts as
+  meant for Sia only if it starts with a greeting and the name (40 of 48 test phrases caught, 1 false alarm in
+  66 others, finding 67). Words spelled alike are said by meaning ("live location", "I live here").
 - **12 natural voices**, male and female, American and British. Choose one in Settings and press
   Preview to hear it. The default is Heart (female, the highest-graded voice).
 - The voice models load when voice mode starts and are freed when it stops (about 0.7 GB of RAM).
@@ -101,15 +104,15 @@ button again to stop.
 
 ## How it stays light
 
-Sprout is designed to share a 16 GB laptop with your other apps (lab-notebook findings 40–42, 49, 52):
+Sia is designed to share a 16 GB laptop with your other apps (lab-notebook findings 40–42, 49, 52):
 - **Resident but idle:** it starts with Windows hidden, with no model loaded (about 177 MB).
   Closing the window only hides it; the power button quits.
 - **The model wakes when the window opens,** usually before you finish typing, and unloads
   itself after 10 idle minutes.
 - **RAM-aware:** with less than 5.5 GiB free it uses gpt-oss, which copes better with
-  memory pressure (finding 40). Memory held by Sprout's own model counts as available, so a
+  memory pressure (finding 40). Memory held by Sia's own model counts as available, so a
   loaded Gemma never swaps itself out (finding 54).
-- **Bounded caches:** llama-server's prompt cache defaults to 8 GiB; Sprout caps it at 1 GiB
+- **Bounded caches:** llama-server's prompt cache defaults to 8 GiB; Sia caps it at 1 GiB
   (finding 41).
 - **Fast by measurement:** Gemma uses its own MTP draft head (1.25× at Google's sampling
   settings) and 16 threads (a cold first answer is 33% faster). A conversation with an image
@@ -119,7 +122,7 @@ Sprout is designed to share a 16 GB laptop with your other apps (lab-notebook fi
 
 ```mermaid
 flowchart LR
-  W["Sprout window<br/>(WebView2 via pywebview)"] -->|"same-origin HTTP<br/>127.0.0.1:8765"| B["app/server.py<br/>Python backend"]
+  W["Sia window<br/>(WebView2 via pywebview)"] -->|"same-origin HTTP<br/>127.0.0.1:8765"| B["app/server.py<br/>Python backend"]
   B -->|"random API key<br/>127.0.0.1:8766"| C["llama-server<br/>chat model (Gemma 4 QAT / gpt-oss)"]
   B -->|"random API key<br/>127.0.0.1:8767"| E["llama-server (CPU)<br/>EmbeddingGemma 2"]
   B --> T["app/tools.py<br/>laptop tools, calculator"]
@@ -140,14 +143,14 @@ flowchart LR
 
 ## Security model
 
-Sprout is a personal tool, not a hardened product. It hasn't had an independent security
+Sia is a personal tool, not a hardened product. It hasn't had an independent security
 review. Its protections:
 - **Local only:** every server binds to 127.0.0.1.
 - **Keys and origin checks:** each llama-server has a random API key. llama-server allows
   every origin (CORS), so without the key any web page could call it. The backend refuses
   cross-origin requests and serves a strict Content-Security-Policy.
 - **No router mode:** llama-server's router mode starts its model servers *without* the API
-  key, so Sprout doesn't use it (finding 44; a unit test enforces this).
+  key, so Sia doesn't use it (finding 44; a unit test enforces this).
 - **Read-only tools:** they can never write, delete, run programs, send anything or reach
   the network.
 - **Blocked paths:** even with approval, `safe_path` refuses network and device paths, data
@@ -161,17 +164,17 @@ review. Its protections:
     shell, and command shells can't be opened;
   - "open" runs only Start-menu apps and documents (programs and scripts such as `.exe`, `.ps1`, `.bat`
     or `.lnk` are refused);
-  - Sprout never deletes, moves or overwrites files, installs software or force-kills apps;
-  - new notes go only into Documents\Sprout;
+  - Sia never deletes, moves or overwrites files, installs software or force-kills apps;
+  - new notes go only into Documents\Sia;
   - every action is written to `app-data/logs/actions.log`.
 - **No guessing:** the model is told never to state a laptop fact (time, place, hardware,
   settings, files) that isn't in a tool result; it calls the tool or says it can't see it.
 - **Location** comes from Windows' own location service, and only when that is turned on
-  (Settings > Privacy & security > Location). Sprout names the place from a built-in GeoNames
+  (Settings > Privacy & security > Location). Sia names the place from a built-in GeoNames
   list and sends nothing anywhere; Windows itself may use its network lookup to find the
   position.
 
-**Content:** Sprout adds no extra content filter. Its prompts ask the models to answer frankly,
+**Content:** Sia adds no extra content filter. Its prompts ask the models to answer frankly,
 without moralising or disclaimers. The models' own safety training still applies. This was
 the author's choice for a personal assistant; edit `UNCENSORED` in `app/server.py` for a
 stricter style.
@@ -183,7 +186,7 @@ the models.
 
 1. **Python 3.11:** `pip install -r requirements.txt`.
 2. **llama.cpp:** build commit `0a1ef309c` with CUDA. See "Reproduce from scratch" in the
-   [lab notebook](LAB_NOTEBOOK.md#reproduce-from-scratch). Sprout needs only `llama-server`;
+   [lab notebook](LAB_NOTEBOOK.md#reproduce-from-scratch). Sia needs only `llama-server`;
    the two patches are for the research tools.
 3. **Models:** download the five files below. Each download is checked against Hugging
    Face's SHA-256. Large files live in `LLM_HOME`, which defaults to `%USERPROFILE%\llm`.
@@ -208,17 +211,17 @@ the models.
 
    ```powershell
    $m = "$env:USERPROFILE\llm\mcp\memory"; New-Item -ItemType Directory -Force $m | Out-Null
-   Set-Content "$m\package.json" '{ "name": "sprout-mcp-memory", "private": true }'
+   Set-Content "$m\package.json" '{ "name": "sia-mcp-memory", "private": true }'
    npm install --prefix $m --ignore-scripts --save-exact @modelcontextprotocol/server-memory@2026.8.31
    ```
 
-   Without it, Sprout simply runs without memory.
+   Without it, Sia simply runs without memory.
 6. **Optional, voice mode:** download the voice models from the official sherpa-onnx releases
    (`k2-fsa/sherpa-onnx`, tags `asr-models` and `tts-models`) into `%USERPROFILE%\llm\models\voice`:
    `silero_vad.onnx`, `sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8` and
    `kokoro-multi-lang-v1_0` (unpack the archives), and for the wake phrase
    `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (tag `kws-models`). Without them, voice mode simply says it isn't installed.
-7. Open **Sprout** and put your name in Settings, so it knows who it works for.
+7. Open **Sia** and put your name in Settings, so it knows who it works for.
 
 To run it without installing: `python app\server.py` (or `--background`, `--model gptoss`,
 `--quit-on-close`).
@@ -227,11 +230,11 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 87 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
-| `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
-| `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
-| `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |
-| `python tools\sprout_actions_check.py --visible` | Laptop actions with the real model, verified against the real state and restored afterwards (32/32, finding 58). It visibly changes the laptop for a few minutes, so it needs `--visible` |
-| `python tools\sprout_daily_check.py` | 33 daily-use requests: memory, languages, maths, laptop lookups, actions it can't take, a very long chat, games, Study, Code and Write (finding 57) |
-| `python tools\sprout_behaviour_check.py` | Chat behaviour in eight scripted conversations: persona, time and place, file search, games, a reasoning sum (8/8, finding 56) |
-| `python tools\sprout_window_check.py` | The standalone window: hidden start, ~0.1 s show, close-to-hide, single instance, memory and a clean quit (9/9, finding 52) |
+| `python -m unittest discover tests` | 89 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python tools\sia_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
+| `python tools\sia_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
+| `python tools\sia_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |
+| `python tools\sia_actions_check.py --visible` | Laptop actions with the real model, verified against the real state and restored afterwards (32/32, finding 58). It visibly changes the laptop for a few minutes, so it needs `--visible` |
+| `python tools\sia_daily_check.py` | 33 daily-use requests: memory, languages, maths, laptop lookups, actions it can't take, a very long chat, games, Study, Code and Write (finding 57) |
+| `python tools\sia_behaviour_check.py` | Chat behaviour in eight scripted conversations: persona, time and place, file search, games, a reasoning sum (8/8, finding 56) |
+| `python tools\sia_window_check.py` | The standalone window: hidden start, ~0.1 s show, close-to-hide, single instance, memory and a clean quit (9/9, finding 52) |

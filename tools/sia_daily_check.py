@@ -1,5 +1,5 @@
-"""Daily-use check for Sprout with the real model: 22 realistic requests across Chat, Study, Code
-and Write, scored automatically. Complements sprout_behaviour_check.py.
+"""Daily-use check for Sia with the real model: 22 realistic requests across Chat, Study, Code
+and Write, scored automatically. Complements sia_behaviour_check.py.
 
 Covers: memory within a chat, Hinglish, identity, long explanations, code, date and percentage
 maths, knowledge, honesty about news it can't know, actions it can't take (it must not pretend),
@@ -7,8 +7,8 @@ disk space (checked against the real value), startup apps, temperature (no inven
 temperature), reading a file, browser tabs, finding files, game controls, a very long chat
 (beyond the 16k context), and one request each in Study, Code and Write.
 
-  python tools/sprout_daily_check.py [--show] [--only NAME,NAME]
-Starts Sprout without a window on temporary settings (the user's own are untouched), then quits it.
+  python tools/sia_daily_check.py [--show] [--only NAME,NAME]
+Starts Sia without a window on temporary settings (the user's own are untouched), then quits it.
 """
 import datetime as dt
 import http.client
@@ -140,7 +140,7 @@ def scenarios():
                      " | ".join(f"{r['user']}: {r['tools']}" for r in rs))),
         ("long chat", "chat", ["__LONG__", "when and where is my demo?"],
          lambda rs: (not rs[-1]["errors"] and "friday" in rs[-1]["answer"].lower(), f"errors {rs[-1]['errors']}: {rs[-1]['answer'][:60]!r}")),
-        # general knowledge from training: a too-broad honesty line once made Sprout refuse all of these
+        # general knowledge from training: a too-broad honesty line once made Sia refuse all of these
         *[(f"knows: {q}", "chat", [q],
            (lambda want: lambda rs: (bool(re.search(want, rs[0]["answer"], re.I))
                                      and not re.search(r"don't (have|know)|no information|can't look", rs[0]["answer"], re.I),
@@ -152,7 +152,7 @@ def scenarios():
                           ("who is donald trump?", r"president"),
                           ("what's your take on RCB?", r"bengaluru|bangalore|ipl|kohli|fan|trophy|cricket|team"),
                           ("who wrote the Ramayana?", r"valmiki")]],
-        # something never mentioned: an earlier scenario tells Sprout about an exam, and Memory now keeps it
+        # something never mentioned: an earlier scenario tells Sia about an exam, and Memory now keeps it
         ("unknown fact", "chat", ["when is my dentist appointment?"],
          # honest either way: "I don't know", or a real search (a tool ran) that found nothing; never an invented date
          lambda rs: ((bool(re.search(r"don't know|haven't (told|mentioned|said)|didn't (tell|mention|say)|not sure|no idea|"
@@ -206,10 +206,10 @@ def main():
     code = ("import sys, pathlib; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
             f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
-    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    import socket  # never test against the owner's running Sia: it would get the questions and the actions
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=dict(os.environ))
     for _ in range(120):
         try:

@@ -1,11 +1,11 @@
 cff-version: 1.2.0
 message: "If you use this work, please cite it as below."
-title: "SPROUT: running big language models on a 6 GB laptop without losing intelligence"
+title: "SIA: running big language models on a 6 GB laptop without losing intelligence"
 abstract: >-
   Measured study of running large mixture-of-experts language models (Gemma 4 26B-A4B,
   gpt-oss-20b) with llama.cpp on an RTX 3050 6 GB laptop with 16 GB of RAM, using only
   released-precision models and output-preserving speed-ups, with controlled benchmarks and
-  paired accuracy tests; packaged as Sprout, an offline desktop AI app.
+  paired accuracy tests; packaged as Sia, an offline desktop AI app.
 type: software
 authors:
   - given-names: Hrithik

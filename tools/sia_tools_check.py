@@ -1,11 +1,11 @@
-"""Live check of Sprout's laptop tools with the real models: does the model call the right
+"""Live check of Sia's laptop tools with the real models: does the model call the right
 tool, does the permission flow work (approve and deny), and does the answer use the result?
 
-  python tools/sprout_tools_check.py
-  python tools/sprout_tools_check.py "What time is it?" "Where am I?"   (your own questions, all approved)
+  python tools/sia_tools_check.py
+  python tools/sia_tools_check.py "What time is it?" "Where am I?"   (your own questions, all approved)
   add --chat to ask them as one conversation (follow-ups like "any left?"), --deny to decline every card,
   --deny-actions to approve reads but decline every action, --mode=think (or study, code, ...) for another mode
-Starts Sprout without a window on a temporary settings file (laptop access on, nothing
+Starts Sia without a window on a temporary settings file (laptop access on, nothing
 always-allowed), then quits it. The user's own settings are untouched.
 """
 import http.client
@@ -63,10 +63,10 @@ def main():
     code = ("import sys, runpy; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"import pathlib; sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
             f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
-    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    import socket  # never test against the owner's running Sia: it would get the questions and the actions
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=env)
     for _ in range(120):
         try:
@@ -78,7 +78,7 @@ def main():
         ("chat", "who's your boss?", None, "once"),
         ("chat", "How many browser tabs do I have open right now, and how loaded is my CPU?", None, "once"),
         ("chat", "What did I download today?", None, "once"),
-        ("chat", f"Read the file {ROOT / 'app' / 'modes.json'} and tell me how many modes Sprout has.", None, "once"),
+        ("chat", f"Read the file {ROOT / 'app' / 'modes.json'} and tell me how many modes Sia has.", None, "once"),
         ("chat", "What's my GPU temperature?", None, "deny"),
         ("think", "How much free space is on my C drive?", "gptoss", "once"),
     ]

@@ -1,4 +1,4 @@
-"""Reply latency of Sprout's Chat mode over a multi-turn conversation, with the real model.
+"""Reply latency of Sia's Chat mode over a multi-turn conversation, with the real model.
 
 Measures, per turn: time to the first visible word, total time, and how many prompt tokens
 llama-server had to process (prompt_n) vs reuse from its cache (cache_n). A conversation should
@@ -6,8 +6,8 @@ only process its newest message; re-processing the whole history means the promp
 changed (for example a clock at the top of the system prompt). The run crosses a minute
 boundary on purpose.
 
-  python tools/sprout_latency_check.py
-Starts Sprout without a window on temporary settings (the user's own are untouched), then quits it.
+  python tools/sia_latency_check.py
+Starts Sia without a window on temporary settings (the user's own are untouched), then quits it.
 """
 import http.client
 import json
@@ -60,10 +60,10 @@ def main():
     code = ("import sys, pathlib; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
             f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
-    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    import socket  # never test against the owner's running Sia: it would get the questions and the actions
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=dict(os.environ))
     for _ in range(120):
         try:

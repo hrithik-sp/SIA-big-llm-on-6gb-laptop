@@ -1,11 +1,11 @@
-"""End-to-end check of the Sprout app (app/server.py) with the real models.
+"""End-to-end check of the Sia app (app/server.py) with the real models.
 
-Starts Sprout without a window, then drives its API like the UI does: Chat identity,
+Starts Sia without a window, then drives its API like the UI does: Chat identity,
 See (image text + shapes), Read (PDF page citation), Library (retrieval + citation),
 Think deep (gpt-oss, model switch), Stop, and Quit (no llama-server left behind).
 Each scenario checks for a specific expected answer.
 
-  python tools/sprout_e2e.py TESTDIR      # TESTDIR holds vision_test.png, lecture.pdf, notes_*.txt
+  python tools/sia_e2e.py TESTDIR      # TESTDIR holds vision_test.png, lecture.pdf, notes_*.txt
 """
 import base64
 import http.client
@@ -99,7 +99,7 @@ def main():
                             cwd=str(ROOT))
     for _ in range(120):
         if proc.poll() is not None:
-            sys.exit(f"Sprout exited during startup (code {proc.returncode})")
+            sys.exit(f"Sia exited during startup (code {proc.returncode})")
         try:
             if req("GET", "/api/status", timeout=3)[0] == 200:
                 break
@@ -110,7 +110,7 @@ def main():
 
     # Chat: identity + speed (first request also waits for the model to load)
     a, _, meta, tm, s = chat("chat", [user("What's your name? Answer in one short sentence.")])
-    check("chat identity", "sprout" in a.lower(), f"{a.strip()[:100]!r} ({s:.1f} s incl. load, {tm.get('predicted_per_second', 0):.1f} tok/s)")
+    check("chat identity", "sia" in a.lower(), f"{a.strip()[:100]!r} ({s:.1f} s incl. load, {tm.get('predicted_per_second', 0):.1f} tok/s)")
 
     # See: text + shapes in a generated image
     img = "data:image/png;base64," + base64.b64encode((tdir / "vision_test.png").read_bytes()).decode()
@@ -137,7 +137,7 @@ def main():
 
     req("POST", "/api/kb/delete", {"name": TEST_LIB})
 
-    # Think deep: gpt-oss (Sprout swaps the chat server), a problem with a known answer
+    # Think deep: gpt-oss (Sia swaps the chat server), a problem with a known answer
     a, reasoning, meta, tm, s = chat("think", [user("How many ways are there to tile a 2x10 board with 1x2 dominoes? Give the number.")])
     check("think: model + answer", meta.get("model") == "gptoss" and "89" in a,
           f"{a.strip()[-120:]!r}; reasoning {len(reasoning)} chars; {s:.1f} s incl. model switch; {tm.get('predicted_per_second', 0):.1f} tok/s")

@@ -1,5 +1,5 @@
 "use strict";
-// Sprout UI: talks only to its own backend (same origin). See app/server.py.
+// Sia UI: talks only to its own backend (same origin). See app/server.py.
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -108,7 +108,7 @@ function setMode(id, { keepModel = false } = {}) {
   $("#input").placeholder = m.requires_image ? "Add an image (+, paste or drop), then ask about it…"
     : m.requires_file ? "Add a PDF or text file (+), then ask about it…"
     : m.rag ? "Ask about the files in your Library…"
-    : m.style === "messenger" ? "Say something…" : `Ask Sprout · ${m.name}…`;
+    : m.style === "messenger" ? "Say something…" : `Ask Sia · ${m.name}…`;
   renderModeMenu(); renderModeChips(); renderModelSelect();
 }
 function renderModelSelect() {
@@ -154,7 +154,7 @@ function renderSettings() {
 async function pollStatus() {
   try {
     const s = await api("/api/status"); S.status = s; S.failures = 0;
-    // Sprout was restarted with new code: reload the window between answers so it matches
+    // Sia was restarted with new code: reload the window between answers so it matches
     if (S.boot && s.boot && s.boot !== S.boot && !S.streaming) { location.reload(); return; }
     S.boot = S.boot || s.boot;
     $("#offline").hidden = true; $("#send").disabled = false;
@@ -179,7 +179,7 @@ async function pollStatus() {
     $("#s-power").textContent = s.battery == null ? "–" : (s.on_ac ? `plugged in · ${Math.round(s.battery)}%` : `battery ${Math.round(s.battery)}% · slower`);
     if (s.engine_error) $("#s-model").textContent = s.engine_error;
     renderVitals(s);
-    for (const item of s.inbox || []) receiveInbox(item);  // files sent from Explorer ("Ask Sprout")
+    for (const item of s.inbox || []) receiveInbox(item);  // files sent from Explorer ("Ask Sia")
   } catch {
     if (++S.failures >= 2) {
       $("#offline").hidden = false; $("#send").disabled = true;
@@ -276,7 +276,7 @@ async function addFiles(files) {
       if (!r.ok) throw new Error(d.error);
       if (!d.text.trim()) throw new Error(`${f.name}: no text found. For scanned pages, add them as images.`);
       S.attachments.push({ kind: "doc", name: f.name, text: d.text, chars: d.chars, pages: d.pages });
-      if (d.chars > MAX_DOC_CHARS) toast(`${f.name} is long. Sprout reads about ${MAX_DOC_CHARS / 1000}k characters at once; for long files, use the Library.`, 6000);
+      if (d.chars > MAX_DOC_CHARS) toast(`${f.name} is long. Sia reads about ${MAX_DOC_CHARS / 1000}k characters at once; for long files, use the Library.`, 6000);
       if (!S.modes[S.mode].files) setMode("read");
     } catch (e) { toast(e.message, 5000); }
   }
@@ -324,7 +324,7 @@ function renderAttachments() {
   });
 }
 async function snipScreen() {
-  toast("Drag over the part of the screen Sprout should see…", 6000);
+  toast("Drag over the part of the screen Sia should see…", 6000);
   try {
     const r = await post("/api/snip");
     if (r.image) { addImage(r.image, "Screen snip"); $("#input").focus(); } else toast("No snip captured.");
@@ -340,7 +340,7 @@ async function fromClipboard() {
     const t = await navigator.clipboard.readText();
     if (t && t.trim()) { const i = $("#input"); i.value = (i.value ? i.value + "\n\n" : "") + t; autosize(); i.focus(); return; }
   } catch { /* permission denied */ }
-  toast("Nothing on the clipboard Sprout can use.");
+  toast("Nothing on the clipboard Sia can use.");
 }
 
 // ------------------------------------------------------------------ messages
@@ -416,7 +416,7 @@ async function send() {
   if (m.requires_file && !docs.length && !had("docs")) { toast("Add a PDF or text file first (+)."); return; }
   if (images.length && !canSee()) { toast(`${modelName(S.model)} can't see images; choose Gemma.`); return; }
   const docChars = docs.reduce((n, d) => n + d.chars, 0);
-  if (docChars > MAX_DOC_CHARS && !confirm(`The attached text is longer than Sprout can read at once (~${MAX_DOC_CHARS / 1000}k characters), so parts may be missed. Continue? For long files, the Library works better.`)) return;
+  if (docChars > MAX_DOC_CHARS && !confirm(`The attached text is longer than Sia can read at once (~${MAX_DOC_CHARS / 1000}k characters), so parts may be missed. Continue? For long files, the Library works better.`)) return;
 
   if (!S.chat) S.chat = { id: newId(), title: (text || docs[0]?.name || "Image").slice(0, 60), mode: S.mode, model: S.model, created: Date.now(), messages: [] };
   S.chat.mode = S.mode; S.chat.model = S.model;
@@ -484,7 +484,7 @@ async function stream() {
       }
     }
   } catch (e) {
-    am.error = e.name === "AbortError" ? (V.on ? "Interrupted." : "Stopped.") : e.message === "Failed to fetch" ? "Sprout's engine isn't reachable. Reopen Sprout and try again." : e.message;
+    am.error = e.name === "AbortError" ? (V.on ? "Interrupted." : "Stopped.") : e.message === "Failed to fetch" ? "Sia's engine isn't reachable. Reopen Sia and try again." : e.message;
   } finally {
     finished = true;
     clearInterval(waitTimer); wait.remove();
@@ -507,7 +507,7 @@ async function stream() {
 function stop() { if (S.abort) S.abort.abort(); }
 function askPermission(v, ev) {
   const card = el("div", "tool-card");
-  const h = el("div", "tc-h"); h.append(icon("i-laptop"), el("span", null, `Sprout wants to: ${ev.label}`));
+  const h = el("div", "tc-h"); h.append(icon("i-laptop"), el("span", null, `Sia wants to: ${ev.label}`));
   const r = el("div", "tc-r", ev.action
     ? `This changes your laptop: it ${ev.does}.${ev.danger ? " You'll be asked every time for this one." : ""}`
     : `Reads ${ev.reads}. Read-only: nothing on your laptop is changed.`);
@@ -534,7 +534,7 @@ function toolNote(v, ev) {
 }
 
 // ------------------------------------------------------------------ voice mode (app/voice.py)
-// The microphone is captured with the browser's echo cancellation, so Sprout's own voice is removed and
+// The microphone is captured with the browser's echo cancellation, so Sia's own voice is removed and
 // the user can interrupt it by talking. Audio goes to the backend (VAD + speech recognition); what the
 // user said is sent as a normal message, and the reply is spoken sentence by sentence while it streams.
 const V = { on: false, starting: false, ctx: null, out: null, mic: null, node: null, sendQ: [], sending: false,
@@ -545,10 +545,10 @@ function voiceState(state) {  // idle | hearing | speaking: the mic button shows
   document.body.classList.toggle("voice-hearing", state === "hearing");
   document.body.classList.toggle("voice-speaking", state === "speaking");
   document.body.classList.toggle("voice-paused", V.on && V.muted);
-  $("#input").placeholder = !V.on ? "Ask Sprout…" : V.muted ? "Listening paused (press pause again to resume)"
-    : state === "speaking" ? (V.listen === "wake" ? "Speaking… (say “Hey Sprout” or “stop” to interrupt)" : "Speaking… (talk to interrupt)")
+  $("#input").placeholder = !V.on ? "Ask Sia…" : V.muted ? "Listening paused (press pause again to resume)"
+    : state === "speaking" ? (V.listen === "wake" ? "Speaking… (say “Hey Sia” or “stop” to interrupt)" : "Speaking… (talk to interrupt)")
     : state === "hearing" ? "Listening…" : S.streaming ? "Thinking…"
-    : V.listen === "wake" ? "Say “Hey Sprout”, or type" : "Talk to Sprout, or type";
+    : V.listen === "wake" ? "Say “Hey Sia”, or type" : "Talk to Sia, or type";
 }
 
 async function toggleVoice() {
@@ -561,17 +561,17 @@ async function toggleVoice() {
     V.mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     V.ctx = new AudioContext();
     await V.ctx.audioWorklet.addModule("/static/voice-worklet.js");
-    V.node = new AudioWorkletNode(V.ctx, "sprout-capture");
+    V.node = new AudioWorkletNode(V.ctx, "sia-capture");
     V.node.port.onmessage = (e) => { V.sendQ.push(e.data); pumpAudio(); };
     V.ctx.createMediaStreamSource(V.mic).connect(V.node);
-    V.out = new AudioContext();  // playback on its own context, so Sprout can pause its voice without pausing the mic
+    V.out = new AudioContext();  // playback on its own context, so Sia can pause its voice without pausing the mic
     V.on = true; $("#voice").setAttribute("aria-pressed", "true");
     $("#voice-pause").hidden = false; $("#voice-pause").setAttribute("aria-pressed", "false");
     voiceEvents(); voiceState("idle");
-    toast(V.listen === "wake" ? "Voice on. Say “Hey Sprout” to talk to it; tap the mic again to stop." : "Voice on. Just talk; tap the mic again to stop.", 4500);
+    toast(V.listen === "wake" ? "Voice on. Say “Hey Sia” to talk to it; tap the mic again to stop." : "Voice on. Just talk; tap the mic again to stop.", 4500);
     wake();
   } catch (e) {
-    toast(e.name === "NotAllowedError" ? "Sprout needs the microphone: allow it when asked, then try again." : `Voice mode couldn't start: ${e.message}`, 6000);
+    toast(e.name === "NotAllowedError" ? "Sia needs the microphone: allow it when asked, then try again." : `Voice mode couldn't start: ${e.message}`, 6000);
     await stopVoice();
   } finally { V.starting = false; $("#voice").disabled = false; }
 }
@@ -614,15 +614,15 @@ async function voiceEvents() {
     }
   } catch (e) { if (V.on && e.name !== "AbortError") toast("Voice connection lost; tap the mic to restart.", 5000); }
 }
-// Interruptions, as LiveKit Agents handles them (docs.livekit.io, turn-taking tuning): speech heard while Sprout
-// talks first PAUSES its voice; only real words from the user stop it. An echo of Sprout's own voice (likely at
+// Interruptions, as LiveKit Agents handles them (docs.livekit.io, turn-taking tuning): speech heard while Sia
+// talks first PAUSES its voice; only real words from the user stop it. An echo of Sia's own voice (likely at
 // high volume), a short "okay" / "mm-hm", or noise resumes it where it paused. The first 0.7 s of a reply,
 // when echo is worst, never pauses it (LiveKit uses 1 s; shorter keeps interrupting snappy). A reply still being written is never cancelled by a sound alone.
-// (A sound that stopped speech at once made Sprout cut its own sentence and drop the next reply.)
+// (A sound that stopped speech at once made Sia cut its own sentence and drop the next reply.)
 const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]?hm+|sure|got it|i see)[.!?]*$/i;
-// Who is Sprout being spoken to by? In "wake" mode (Settings, the default) only speech with "Hey Sprout" (found by
-// a keyword spotter on the server) or in the follow-up window after it is addressed to Sprout; other people
-// talking nearby is never answered, and while Sprout speaks only "Hey Sprout", "stop" or "wait" interrupt it.
+// Who is Sia being spoken to by? In "wake" mode (Settings, the default) only speech with "Hey Sia" (found by
+// a keyword spotter on the server) or in the follow-up window after it is addressed to Sia; other people
+// talking nearby is never answered, and while Sia speaks only "Hey Sia", "stop" or "wait" interrupt it.
 // (In always-listening mode a friend's conversation was answered line by line.)
 const STOP_RX = /^\W*(stop|wait|hold on|shut up|enough|pause|be quiet|quiet|cancel)\b/i;
 function onVoiceEvent(ev) {
@@ -636,7 +636,7 @@ function onVoiceEvent(ev) {
   } else if (ev.type === "transcript") {
     clearTimeout(V.resumeTimer);
     const speaking = V.playing || V.say.length || V.paused;
-    if (!ev.addressed) {  // someone else talking, or the user not addressing Sprout
+    if (!ev.addressed) {  // someone else talking, or the user not addressing Sia
       if ((speaking || S.streaming) && STOP_RX.test(ev.text)) { bargeIn(); voiceState("idle"); }
       else resumeSpeech();
       return;
@@ -644,16 +644,16 @@ function onVoiceEvent(ev) {
     const justSpoke = performance.now() - V.lastEnd < 3000;  // recognition ends ~0.6 s after the sound does
     if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) { resumeSpeech(); return; }
     const text = ev.wake ? ev.request : ev.text;  // the server strips the wake phrase
-    if (speaking || S.streaming) bargeIn();  // real words: Sprout stops and answers them
+    if (speaking || S.streaming) bargeIn();  // real words: Sia stops and answers them
     voiceState("idle");
     if (!/\w/.test(text)) {
-      queueSpeech("Yes?"); followUp(); return;  // just "Hey Sprout": acknowledge, then listen for the request
+      queueSpeech("Yes?"); followUp(); return;  // just "Hey Sia": acknowledge, then listen for the request
     }
     askByVoice(text.charAt(0).toUpperCase() + text.slice(1));
   } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
 }
-function followUp() {  // after Sprout speaks, the next few seconds need no wake phrase (like Alexa's Follow-Up Mode)
+function followUp() {  // after Sia speaks, the next few seconds need no wake phrase (like Alexa's Follow-Up Mode)
   if (V.on && V.listen === "wake") post("/api/voice/awake", { seconds: 8 }).catch(() => {});
 }
 function toggleListening() {
@@ -664,7 +664,7 @@ function toggleListening() {
   voiceState("idle");
 }
 function words(text) { return (text.toLowerCase().match(/[a-z0-9']+/g) || []); }
-function isEcho(text) {  // what the mic heard is mostly what Sprout itself just said
+function isEcho(text) {  // what the mic heard is mostly what Sia itself just said
   const heard = words(text), said = new Set(V.recent.filter((r) => performance.now() - r.t < 30000).flatMap((r) => words(r.text)));
   if (!heard.length) return true;
   return heard.filter((w) => said.has(w)).length / heard.length >= 0.6 && (heard.length >= 2 || said.has(heard[0]));
@@ -708,10 +708,20 @@ async function askByVoice(text) {
 // The first piece of a reply is cut short (at a comma or after ~8 words) so its audio is ready quickly; the rest
 // goes sentence by sentence, made while earlier pieces play (a run-on is cut at 7 words). A long first sentence once made the voice
 // start ~3 s after the text.
+// a sentence ends at . ! ? … : ; before a space, or a line break, but not after initials or a few abbreviations
+// ("A. P. J. Abdul Kalam" was spoken as "A." "P." "J." in separate pieces)
+const NOT_AN_END = /(?:^|[\s("'])(?:[A-Za-z]|Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|approx|e\.g|i\.e)\.$/;
+function nextSentence(text) {
+  const rx = /[.!?…:;](?=\s)|\n/g;
+  for (let m; (m = rx.exec(text));) {
+    const head = text.slice(0, m.index + 1);
+    if (m[0] !== "." || !NOT_AN_END.test(head)) return [head, head];
+  }
+  return null;
+}
 function voiceFeed(delta) {
   if (!V.on) return;
   V.pending += delta;
-  const sentence = /^([\s\S]*?[.!?…:;](?=\s)|[\s\S]*?\n)/;
   let m;
   for (;;) {
     if (!V.firstOut) {
@@ -720,8 +730,8 @@ function voiceFeed(delta) {
       // or just before a joining word after 4+ words ("I can check your calendar | if you have ..."), as a speaker
       // would pause; a long run-on sentence is cut at 10 words; a short sentence is never split
       const join = words.length > 7 && V.pending.match(/^((?:\S+\s+){4,}?)(?=(?:if|and|but|so|because|which|when|while|where|then|or|though)\s)/i);
-      m = V.pending.match(sentence) || clause || join || (words.length > 10 ? [null, words.slice(0, 7).join(" ") + " "] : null);
-    } else m = V.pending.match(sentence);
+      m = nextSentence(V.pending) || clause || join || (words.length > 10 ? [null, words.slice(0, 7).join(" ") + " "] : null);
+    } else m = nextSentence(V.pending);
     if (!m || m[1].trim().length < 2) break;
     queueSpeech(m[1]); V.pending = V.pending.slice(m[1].length); V.firstOut = true;
   }
@@ -845,9 +855,9 @@ function wire() {
   $("#collapse").onclick = () => $("#app").classList.add("collapsed");
   $("#expand").onclick = () => $("#app").classList.toggle("collapsed");
   $("#quit").onclick = async () => {
-    if (!confirm("Quit Sprout completely? (Closing the window just hides it; Ctrl+Alt+Space brings it back.)")) return;
+    if (!confirm("Quit Sia completely? (Closing the window just hides it; Ctrl+Alt+Space brings it back.)")) return;
     await fetch("/api/quit", { method: "POST" }).catch(() => {});
-    document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;color:#9097a7;font:15px Segoe UI">Sprout has stopped. You can close this window.</div>';
+    document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;color:#9097a7;font:15px Segoe UI">Sia has stopped. You can close this window.</div>';
   };
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newChat(); }
@@ -876,7 +886,7 @@ function wire() {
   S.model = S.config.status.default_model;
   setMode("chat", { keepModel: true });
   renderLibrary(S.config.libraries);
-  if (S.model !== "gemma") toast("Memory is tight right now, so Sprout is using gpt-oss, which copes better.", 6000);
+  if (S.model !== "gemma") toast("Memory is tight right now, so Sia is using gpt-oss, which copes better.", 6000);
   loadChats(); pollStatus(); setInterval(pollStatus, 2000); loadSettings();
   wake();
   $("#input").title = "Enter to send · Shift+Enter new line · type / to switch mode · Ctrl+K new chat";

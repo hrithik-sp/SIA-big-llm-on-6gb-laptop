@@ -1,11 +1,11 @@
-"""The first reply after Sprout starts: re-reading the instructions vs restoring the saved warm-up.
+"""The first reply after Sia starts: re-reading the instructions vs restoring the saved warm-up.
 
-Starts Sprout twice on the same temporary data folder. Each time a message is sent as soon as the model is
-up, the way a user who opens Sprout and types straight away would, and the time to its first word is
-measured. Run 1 has no saved warm-up (Sprout pre-reads ~5,700 tokens of instructions and tools, then saves
-that state); run 2 restores it. The log lines from app-data/logs/sprout.log show the save and the restore.
+Starts Sia twice on the same temporary data folder. Each time a message is sent as soon as the model is
+up, the way a user who opens Sia and types straight away would, and the time to its first word is
+measured. Run 1 has no saved warm-up (Sia pre-reads ~5,700 tokens of instructions and tools, then saves
+that state); run 2 restores it. The log lines from app-data/logs/sia.log show the save and the restore.
 
-  python tools/sprout_coldstart_check.py
+  python tools/sia_coldstart_check.py
 """
 import http.client
 import json
@@ -67,7 +67,7 @@ def run(tmp, label):
         fw, tm = first_word("hi, what can you do for me?")
         print(f"{label}: free RAM {free:.1f} GB | model loaded after {t_loaded:.1f} s | first word "
               f"{fw:.1f} s after sending | llama: processed {tm.get('prompt_n')} reused {tm.get('cache_n')}", flush=True)
-        log = tmp / "logs" / "sprout.log"
+        log = tmp / "logs" / "sia.log"
         for _ in range(300):  # let the warm-up save or restore finish before quitting (it's logged when done)
             text = log.read_text(encoding="utf-8") if log.exists() else ""
             if "saved warm-" in text or "restored warm-" in text or "save failed" in text:
@@ -76,7 +76,7 @@ def run(tmp, label):
     finally:
         call("POST", "/api/quit", {})
         srv.wait(60)
-    log = tmp / "logs" / "sprout.log"
+    log = tmp / "logs" / "sia.log"
     for line in (log.read_text(encoding="utf-8").splitlines() if log.exists() else []):
         if "warm-" in line or "restore" in line:
             print("   log:", line)
@@ -88,7 +88,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     tmp = Path(tempfile.mkdtemp())
     (tmp / "settings.json").write_text(json.dumps({"user_name": "Hrithik S P", "pronouns": "he/him"}))
     try:

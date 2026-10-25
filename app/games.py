@@ -2,7 +2,7 @@
 
 A language model can't hold a hidden word across turns (it isn't in the conversation), so left
 alone it improvises feedback that contradicts itself and leaks the answer. Here the model only
-presents what this engine returns. One game is active at a time (Sprout has one user).
+presents what this engine returns. One game is active at a time (Sia has one user).
 """
 import random
 import re

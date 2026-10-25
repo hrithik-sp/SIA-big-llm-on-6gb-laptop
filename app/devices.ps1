@@ -1,4 +1,4 @@
-# Read-only device queries for Sprout's device_info tool. Prints one JSON object.
+# Read-only device queries for Sia's device_info tool. Prints one JSON object.
 #   powershell -NoProfile -File devices.ps1 -Category battery|display|audio|bluetooth|usb|printers|startup|internet|model|location
 # Nothing here changes a setting; the battery report is written to a temp file and deleted.
 param([Parameter(Mandatory)][string]$Category)
@@ -7,7 +7,7 @@ $out = @{}
 
 switch ($Category) {
   "battery" {
-    $x = Join-Path $env:TEMP ("sprout-battery-" + [guid]::NewGuid().ToString("N") + ".xml")
+    $x = Join-Path $env:TEMP ("sia-battery-" + [guid]::NewGuid().ToString("N") + ".xml")
     powercfg /batteryreport /xml /output $x | Out-Null
     if (Test-Path $x) {
       [xml]$r = Get-Content $x -Raw
@@ -44,14 +44,14 @@ interface IMMDevice { int Activate(ref Guid id, int ctx, IntPtr p, [MarshalAs(Un
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IMMDeviceEnumerator { int f(); int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice d); }
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
-public static class SproutVolume {
+public static class SiaVolume {
   public static float[] Get() {
     var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator()); IMMDevice dev; en.GetDefaultAudioEndpoint(0, 1, out dev);
     var iid = typeof(IAudioEndpointVolume).GUID; object o; dev.Activate(ref iid, 23, IntPtr.Zero, out o);
     var v = (IAudioEndpointVolume)o; float lvl; bool mute; v.GetMasterVolumeLevelScalar(out lvl); v.GetMute(out mute);
     return new float[] { lvl, mute ? 1f : 0f }; } }
 "@
-    $v = [SproutVolume]::Get()
+    $v = [SiaVolume]::Get()
     if ($v) { $out.volume_pct = [math]::Round(100 * $v[0]); $out.muted = [bool]$v[1] }
     $out.devices = @(Get-PnpDevice -Class AudioEndpoint -PresentOnly -Status OK | Select-Object -ExpandProperty FriendlyName)
   }

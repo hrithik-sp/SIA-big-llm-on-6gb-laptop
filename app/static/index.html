@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Sprout</title>
+<title>Sia</title>
 <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/katex.min.css">
 <link rel="stylesheet" href="/static/vendor/hljs-dark.min.css">
@@ -44,7 +44,7 @@
   <aside id="sidebar">
     <div class="brand">
       <img src="/static/logo.svg" alt="" width="26" height="26">
-      <span>Sprout</span>
+      <span>Sia</span>
       <button id="collapse" class="icon-btn" title="Hide sidebar" aria-label="Hide sidebar"><svg><use href="#i-side"/></svg></button>
     </div>
     <button id="new-chat" class="side-btn" title="New chat (Ctrl+K)"><svg><use href="#i-edit"/></svg><span>New chat</span></button>
@@ -53,7 +53,7 @@
     <div class="side-foot">
       <button id="open-library" class="side-btn"><svg><use href="#i-lib"/></svg><span>Library</span><span id="lib-count" class="count"></span></button>
       <button id="open-settings" class="icon-btn" title="Settings" aria-label="Settings" aria-haspopup="dialog"><svg><use href="#i-gear"/></svg></button>
-      <button id="quit" class="icon-btn" title="Quit Sprout completely (frees all memory)" aria-label="Quit Sprout"><svg><use href="#i-power"/></svg></button>
+      <button id="quit" class="icon-btn" title="Quit Sia completely (frees all memory)" aria-label="Quit Sia"><svg><use href="#i-power"/></svg></button>
     </div>
   </aside>
 
@@ -71,7 +71,7 @@
       <span id="loader" aria-hidden="true" hidden><i></i></span>
       <button id="status-pill" title="System status" aria-haspopup="dialog"><span class="dot"></span><span id="status-text">Starting</span></button>
     </header>
-    <div id="offline" hidden>Sprout's engine isn't running. Reopen Sprout from the desktop or Start menu (or press Ctrl+Alt+Space).</div>
+    <div id="offline" hidden>Sia's engine isn't running. Reopen Sia from the desktop or Start menu (or press Ctrl+Alt+Space).</div>
 
     <section id="conversation">
       <div id="home">
@@ -85,9 +85,9 @@
       <div id="attachments"></div>
       <div id="composer">
         <button id="plus" class="icon-btn" title="Add files, snip the screen, or paste" aria-haspopup="menu" aria-label="Add"><svg><use href="#i-plus"/></svg></button>
-        <textarea id="input" rows="1" placeholder="Ask Sprout…" aria-label="Message"></textarea>
-        <button id="voice-pause" class="icon-btn voice-pause" title="Pause listening (Sprout hears nothing until you resume)" aria-label="Pause listening" aria-pressed="false" hidden><svg><use href="#i-pause"/></svg></button>
-        <button id="voice" class="icon-btn voice-btn" title="Talk with Sprout (voice mode)" aria-label="Voice mode" aria-pressed="false"><svg><use href="#i-mic"/></svg></button>
+        <textarea id="input" rows="1" placeholder="Ask Sia…" aria-label="Message"></textarea>
+        <button id="voice-pause" class="icon-btn voice-pause" title="Pause listening (Sia hears nothing until you resume)" aria-label="Pause listening" aria-pressed="false" hidden><svg><use href="#i-pause"/></svg></button>
+        <button id="voice" class="icon-btn voice-btn" title="Talk with Sia (voice mode)" aria-label="Voice mode" aria-pressed="false"><svg><use href="#i-mic"/></svg></button>
         <button id="send" class="send" title="Send (Enter)" aria-label="Send"><svg><use href="#i-send"/></svg></button>
         <button id="stop" class="send stop" title="Stop (Esc)" aria-label="Stop" hidden><svg><use href="#i-stop"/></svg></button>
       </div>
@@ -119,24 +119,24 @@
   <div class="row"><span>Free graphics memory</span><b id="s-vram">–</b></div>
   <div class="row"><span>GPU temperature</span><b id="s-temp">–</b></div>
   <div class="row"><span>Power</span><b id="s-power">–</b></div>
-  <p class="note">The model unloads itself after 10 idle minutes to give memory back, and wakes when you open Sprout. <kbd>Ctrl Alt Space</kbd> summons Sprout anywhere.</p>
+  <p class="note">The model unloads itself after 10 idle minutes to give memory back, and wakes when you open Sia. <kbd>Ctrl Alt Space</kbd> summons Sia anywhere.</p>
   <button id="unload" class="ghost">Free memory now</button>
 </div>
 
 <div id="panel-settings" class="menu panel" role="dialog" aria-label="Settings" hidden>
   <div class="set-h">Your name</div>
-  <input id="set-name" class="field" type="text" maxlength="60" placeholder="What should Sprout call you?" aria-label="Your name">
+  <input id="set-name" class="field" type="text" maxlength="60" placeholder="What should Sia call you?" aria-label="Your name">
   <select id="set-pronouns" class="field" aria-label="Your pronouns"><option value="">Pronouns (optional)</option><option value="he/him">he/him</option><option value="she/her">she/her</option><option value="they/them">they/them</option></select>
-  <p class="note">Sprout works for you: it uses your name and follows your instructions and preferences.</p>
+  <p class="note">Sia works for you: it uses your name and follows your instructions and preferences.</p>
   <div class="set-h">Voice</div>
-  <div class="voice-row"><select id="set-voice" class="field" aria-label="Sprout's voice"></select><button id="voice-preview" class="chip" title="Hear this voice">Preview</button></div>
-  <select id="set-listen" class="field" aria-label="When Sprout listens"><option value="wake">Listen after &ldquo;Hey Sprout&rdquo; (recommended)</option><option value="always">Always listening (when you&rsquo;re alone)</option></select>
-  <p class="note">Voice mode (the microphone button) listens and speaks entirely on this laptop. With &ldquo;Hey Sprout&rdquo;, it ignores other people talking; after it answers you can carry on for a few seconds without saying it again.</p>
+  <div class="voice-row"><select id="set-voice" class="field" aria-label="Sia's voice"></select><button id="voice-preview" class="chip" title="Hear this voice">Preview</button></div>
+  <select id="set-listen" class="field" aria-label="When Sia listens"><option value="wake">Listen after &ldquo;Hey Sia&rdquo; (recommended)</option><option value="always">Always listening (when you&rsquo;re alone)</option></select>
+  <p class="note">Voice mode (the microphone button) listens and speaks entirely on this laptop. With &ldquo;Hey Sia&rdquo;, it ignores other people talking; after it answers you can carry on for a few seconds without saying it again.</p>
   <div class="set-h">Laptop access</div>
-  <label class="switch wide"><input id="set-laptop" type="checkbox"><span class="track"></span><span>Let Sprout look things up on this laptop</span></label>
-  <p class="note">Reading: vitals, devices, location, tabs, apps, processes, the clipboard, and any folder or file you ask about. Sprout asks before each use and never touches places that hold passwords or keys.</p>
-  <label class="switch wide"><input id="set-actions" type="checkbox"><span class="track"></span><span>Let Sprout act on this laptop</span></label>
-  <p class="note">Open apps, files and websites; volume, brightness, Bluetooth, Wi-Fi, theme and media; windows; lock, sleep, restart and shut down; screenshots, clipboard, notes and reminders. Each action shows you a card first; sleep, restart and shut down are asked every time. Sprout never deletes files, installs software or runs scripts. Every action is logged.</p>
+  <label class="switch wide"><input id="set-laptop" type="checkbox"><span class="track"></span><span>Let Sia look things up on this laptop</span></label>
+  <p class="note">Reading: vitals, devices, location, tabs, apps, processes, the clipboard, and any folder or file you ask about. Sia asks before each use and never touches places that hold passwords or keys.</p>
+  <label class="switch wide"><input id="set-actions" type="checkbox"><span class="track"></span><span>Let Sia act on this laptop</span></label>
+  <p class="note">Open apps, files and websites; volume, brightness, Bluetooth, Wi-Fi, theme and media; windows; lock, sleep, restart and shut down; screenshots, clipboard, notes and reminders. Each action shows you a card first; sleep, restart and shut down are asked every time. Sia never deletes files, installs software or runs scripts. Every action is logged.</p>
   <div id="set-allowed"></div>
 </div>
 

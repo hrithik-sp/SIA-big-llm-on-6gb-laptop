@@ -9,7 +9,7 @@ $ErrorActionPreference = "SilentlyContinue"
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @"
 using System; using System.Collections.Generic; using System.Runtime.InteropServices;
-public static class SproutWin {
+public static class SiaWin {
     delegate bool EnumProc(IntPtr h, IntPtr p);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr p);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
@@ -29,7 +29,7 @@ $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
 $tabType = [System.Windows.Automation.ControlType]::TabItem
 $docType = [System.Windows.Automation.ControlType]::Document
 $result = @{}
-foreach ($w in [SproutWin]::Visible()) {
+foreach ($w in [SiaWin]::Visible()) {
     $name = $pids[$w[1]]
     if (-not $name) { continue }  # not a browser: never touched
     $el = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]$w[0])
@@ -49,7 +49,7 @@ foreach ($w in [SproutWin]::Visible()) {
             $child = $walker.GetNextSibling($child)
         }
     }
-    if ($tabs.Count -eq 0) { continue }  # Edge app windows (like Sprout itself) have no tab strip
+    if ($tabs.Count -eq 0) { continue }  # Edge app windows (like Sia itself) have no tab strip
     if (-not $result.ContainsKey($name)) { $result[$name] = @{ windows = 0; tabs = 0; titles = @() } }
     $result[$name].windows += 1
     $result[$name].tabs += $tabs.Count

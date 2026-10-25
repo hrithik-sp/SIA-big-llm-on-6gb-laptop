@@ -1,12 +1,12 @@
 """Voice mode through the real page: headless Edge, a fake microphone, the real mic button.
 
-A question spoken by Sprout's own voice is played into Edge as its microphone
+A question spoken by Sia's own voice is played into Edge as its microphone
 (--use-file-for-fake-audio-capture); the script clicks the mic button through the DevTools protocol (a
 small Node.js client: Node 22 has WebSocket built in) and checks that the question is heard, answered
 and spoken, and that the page threw no errors. Nothing appears on screen.
 
-  python tools/sprout_ui_voice_check.py
-Starts Sprout without a window on temporary settings and data, then quits it.
+  python tools/sia_ui_voice_check.py
+Starts Sia without a window on temporary settings and data, then quits it.
 """
 import http.client
 import io
@@ -79,7 +79,7 @@ def call(method, path, body=None, timeout=60):
 
 
 def question_wav(path):
-    """The questions in Sprout's voice at 48 kHz, GAP_S apart, then silence (Edge loops the file)."""
+    """The questions in Sia's voice at 48 kHz, GAP_S apart, then silence (Edge loops the file)."""
     voice.load_tts()
     parts = [np.zeros(48000 * 6)]  # speak after the mic is on
     for q in QUESTIONS:
@@ -101,7 +101,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     tmp = Path(tempfile.mkdtemp())
     question_wav(tmp / "question.wav")
     (tmp / "settings.json").write_text(json.dumps({"user_name": "Hrithik S P", "pronouns": "he/him"}))

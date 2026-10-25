@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="docs/images/logo.svg" width="88" alt="Sprout logo: an S monogram">
+  <img src="docs/images/logo.svg" width="88" alt="Sia logo: an S monogram">
 </p>
 
-<h1 align="center">SPROUT: big LLMs on a 6 GB laptop</h1>
+<h1 align="center">SIA: big LLMs on a 6 GB laptop</h1>
 
 <p align="center">
   A 26-billion-parameter model on an RTX 3050 laptop (6 GB VRAM, 16 GB RAM) at 12–35 tokens/s,<br>
   <b>without shrinking its intelligence</b>: every speed-up measured, every quality cost quantified,<br>
-  and packaged as <b>Sprout</b>, a private, offline desktop AI.
+  and packaged as <b>Sia</b>, a private, offline desktop AI.
 </p>
 
 <p align="center">
@@ -18,11 +18,11 @@
   <img src="https://img.shields.io/badge/Windows%2011-RTX%203050%206%20GB-555" alt="Windows 11, RTX 3050 6 GB">
 </p>
 
-<p align="center"><b>v1.1.0</b>: Sprout now knows the time, your location and your devices, works as your
+<p align="center"><b>v1.1.0</b>: Sia now knows the time, your location and your devices, works as your
 assistant, and answers in 1.5–2.5 s. <a href="CHANGELOG.md">What's new</a></p>
 
 <p align="center">
-  <img src="docs/images/sprout-study.png" alt="Sprout explaining Dijkstra's algorithm in Study mode, running Gemma 4 26B locally" width="860">
+  <img src="docs/images/sia-study.png" alt="Sia explaining Dijkstra's algorithm in Study mode, running Gemma 4 26B locally" width="860">
 </p>
 
 ## The question
@@ -96,9 +96,9 @@ The full story, including the wrong turns and how each was caught, is in
 **[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 50 problems with how
 each was solved.
 
-## Sprout
+## Sia
 
-<img align="right" src="docs/images/sprout-home.png" width="420" alt="Sprout home screen">
+<img align="right" src="docs/images/sia-home.png" width="420" alt="Sia home screen">
 
 A one-click desktop app built on these results:
 - **8 modes:** Chat, Study, Code, See (images), Read (PDFs), Library (your files, with
@@ -121,7 +121,7 @@ A one-click desktop app built on these results:
   handles dates, conversions and data, and an optional memory remembers what you tell it (each save
   approved).
 
-→ **[Sprout guide: features, install, security model](docs/SPROUT.md)**
+→ **[Sia guide: features, install, security model](docs/SIA.md)**
 
 <br clear="right">
 
@@ -131,12 +131,12 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (66 findings) |
-| [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (67 findings) |
+| [`docs/SIA.md`](docs/SIA.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
-| `app/` | Sprout (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 87 unit tests |
+| `app/` | Sia (Python backend, HTML/JS UI, Windows integration) |
+| `tests/` | 89 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -144,11 +144,11 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 87 tests, no GPU or models needed
+python -m unittest discover tests          # 89 tests, no GPU or models needed
 ```
 
-- **Run Sprout:** build llama.cpp, download the five model files, run `app\install.ps1`.
-  Step by step: [docs/SPROUT.md](docs/SPROUT.md#install-windows-11--nvidia-gpu).
+- **Run Sia:** build llama.cpp, download the five model files, run `app\install.ps1`.
+  Step by step: [docs/SIA.md](docs/SIA.md#install-windows-11--nvidia-gpu).
 - **Reproduce a measurement:** every command checks first that the laptop can take it.
   See [Reproduce from scratch](docs/LAB_NOTEBOOK.md#reproduce-from-scratch).
 
@@ -158,14 +158,14 @@ Everything was measured on one laptop. The methods carry over; the numbers don't
 limits:
 - 210 MMLU-Pro questions detect gaps of about 6 points.
 - The reference is Q8_0, because the 50 GB BF16 model can't run here.
-- Sprout hasn't had an independent security review.
+- Sia hasn't had an independent security review.
 
 Open items (light models for heavy multitasking, a large MoE-cache test) are listed in
 [REPORT.md § 6–7](REPORT.md#6-limitations).
 
 ## Roadmap
 
-Sprout's goal is a smart, human-feeling assistant that knows this laptop and, step by step, can
+Sia's goal is a smart, human-feeling assistant that knows this laptop and, step by step, can
 run it. Next, in order:
 
 1. ~~**Act on the laptop, with approval.**~~ Done (v1.2.0): open, control, windows, power,
@@ -186,7 +186,7 @@ Every step is measured with the same behaviour and laptop tests before it ships.
 
 ## Author
 
-**Hrithik S P**: the research, measurements, tools, the Sprout app and the write-up.
+**Hrithik S P**: the research, measurements, tools, the Sia app and the write-up.
 
 Built on [llama.cpp](https://github.com/ggml-org/llama.cpp), Google's Gemma 4, OpenAI's
 gpt-oss, and GGUF files from ggml-org and unsloth. The models are downloaded separately and

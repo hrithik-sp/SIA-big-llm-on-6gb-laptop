@@ -41,7 +41,7 @@ class Requests(unittest.TestCase):
         self.assertEqual(model, "gemma")
         self.assertEqual(body["chat_template_kwargs"], {"enable_thinking": False})
         self.assertEqual((body["temperature"], body["top_k"], body["top_p"]), (1.0, 64, 0.95))
-        self.assertTrue(body["messages"][0]["content"].startswith("You are Sprout"))
+        self.assertTrue(body["messages"][0]["content"].startswith("You are Sia"))
         self.assertTrue(body["stream"])
 
     def test_think_mode_uses_gptoss_high_effort(self):
@@ -65,9 +65,9 @@ class Requests(unittest.TestCase):
         with self.assertRaises(ValueError):
             server.build_request({"mode": "think", "messages": img})  # gpt-oss has no vision
 
-    def test_every_mode_is_sprout(self):
+    def test_every_mode_is_sia(self):
         for m in server.MODES["modes"]:
-            self.assertIn("Sprout", m["system"], m["id"])
+            self.assertIn("Sia", m["system"], m["id"])
             self.assertIn(m["model"], server.PRESETS, m["id"])
 
 
@@ -302,7 +302,7 @@ class SettingsAndTools(unittest.TestCase):
         self.assertIn("error", a.control("volume", "loud"))
         self.assertIn("error", a.control("brightness", "-5; rm"))
         self.assertIn("error", a.control("firewall", "off"))
-        self.assertIn("error", a.window("close", "sprout"))
+        self.assertIn("error", a.window("close", "sia"))
         self.assertIn("error", a.power("format"))
         self.assertTrue(a.is_dangerous("power", {"mode": "shutdown"}))
         self.assertFalse(a.is_dangerous("power", {"mode": "lock"}))
@@ -322,7 +322,7 @@ class SettingsAndTools(unittest.TestCase):
                 server.tools.user_folders = orig
             self.assertNotEqual(one["saved"], two["saved"])
             self.assertEqual(server.Path(one["saved"]).read_text(encoding="utf-8"), "first")
-            self.assertTrue(bad["saved"].startswith(str(server.Path(d, "Sprout"))) and bad["saved"].endswith(".txt"))
+            self.assertTrue(bad["saved"].startswith(str(server.Path(d, "Sia"))) and bad["saved"].endswith(".txt"))
         t = a.set_reminder("Timer", seconds=10)  # "set a timer for 10 seconds" once became 10 minutes
         self.assertEqual(t["in"], "10 seconds")
         self.assertEqual(a.cancel_reminder(a.list_reminders()["reminders"][-1]["id"])["cancelled"], "Timer")
@@ -364,7 +364,7 @@ class SettingsAndTools(unittest.TestCase):
         self.assertEqual(out["result"], {"cancelled": "oven"})
         self.assertIn("error", a.undo("last"))  # nothing left to undo
         a.HISTORY.append({"n": 9, "tool": "screenshot", "args": {}, "undo": None, "done": False, "label": "screenshot {}",
-                          "desc": "Sprout doesn't delete files; it's at C:\\x.png"})
+                          "desc": "Sia doesn't delete files; it's at C:\\x.png"})
         self.assertIn("can't be undone", a.undo("last")["error"])
         a.record("control", {"setting": "volume", "value": "30"}, {"before": {"volume_pct": 50, "muted": False}})
         self.assertEqual(a.undo_description("volume"), "Undo: volume back to 50%")  # described, not executed
@@ -502,7 +502,7 @@ class SettingsAndTools(unittest.TestCase):
 
 
 class DefaultModel(unittest.TestCase):
-    """The RAM check picks gpt-oss below 5.5 GiB, but must not count Sprout's own loaded model as used."""
+    """The RAM check picks gpt-oss below 5.5 GiB, but must not count Sia's own loaded model as used."""
 
     def setUp(self):
         self.vm, self.proc, self.procs = server.psutil.virtual_memory, server.psutil.Process, dict(server.STATE["procs"])
@@ -538,7 +538,7 @@ class Safety(unittest.TestCase):
         self.assertEqual(server.chat_file("abc123XYZ").name, "abc123XYZ.json")
 
     def test_chat_server_always_has_the_api_key(self):
-        """Router mode starts its children without the key, so Sprout must never use it."""
+        """Router mode starts its children without the key, so Sia must never use it."""
         seen = []
 
         class Dead:
@@ -599,19 +599,19 @@ class Voice(unittest.TestCase):
         self.assertEqual(out[0], 15000 - v.PREROLL - 10000)  # the audio just before the segment
         self.assertEqual(len(L._with_preroll(10100, seg[:10])), 110)  # only as much as is kept
 
-    def test_only_speech_for_sprout_is_answered(self):
-        """Wake mode: speech counts only with "Hey Sprout" in it or in the follow-up window after it (a friend's
+    def test_only_speech_for_sia_is_answered(self):
+        """Wake mode: speech counts only with "Hey Sia" in it or in the follow-up window after it (a friend's
         conversation nearby was answered line by line in always-listening mode)."""
         v = server.voice
         L = v.Listener.__new__(v.Listener)  # no models needed for this part
         L.mode, L.fed, L.wake_hits, L.awake_until = "wake", 0, [], 0
         R = v.RATE
         self.assertFalse(L._addressed(0, 2 * R))  # someone talking, no wake phrase
-        L.wake_hits = [10 * R]  # "Hey Sprout" heard at 10 s, inside "Hey Sprout, what time is it?" (9.5-12 s)
+        L.wake_hits = [10 * R]  # "Hey Sia" heard at 10 s, inside "Hey Sia, what time is it?" (9.5-12 s)
         self.assertTrue(L._addressed(int(9.5 * R), 12 * R))
         self.assertFalse(L._addressed(20 * R, 22 * R))  # later chatter
         L.fed = 30 * R
-        L.awake(8)  # Sprout finished answering: the follow-up window
+        L.awake(8)  # Sia finished answering: the follow-up window
         self.assertTrue(L._addressed(33 * R, 35 * R))
         self.assertFalse(L._addressed(40 * R, 42 * R))  # after the window
         L.mode = "always"
@@ -779,7 +779,7 @@ class Plugins(unittest.TestCase):
         server.tools.MCP["host"] = None
         self.tmp.cleanup()
 
-    def test_only_listed_tools_with_sprout_rules(self):
+    def test_only_listed_tools_with_sia_rules(self):
         self.assertEqual(sorted(self.host.tools), ["fake_Echo", "fake_Press"])  # "Hidden" isn't in the config
         self.assertNotIn("secret_flag", self.host.tools["fake_Echo"]["schema"]["properties"])  # fixed: not the model's
         self.assertEqual(self.host.tools["fake_Press"]["schema"]["properties"]["mode"]["enum"], ["a", "b"])

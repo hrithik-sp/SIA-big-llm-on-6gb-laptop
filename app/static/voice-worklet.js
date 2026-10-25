@@ -34,4 +34,4 @@ class Capture extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor("sprout-capture", Capture);
+registerProcessor("sia-capture", Capture);

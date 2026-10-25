@@ -1,7 +1,7 @@
-"""Check Sprout's standalone window (pywebview): hidden start, instant show, close-to-hide,
+"""Check Sia's standalone window (pywebview): hidden start, instant show, close-to-hide,
 second launch reuses the window, memory cost, and a clean quit.
 
-  python tools/sprout_window_check.py      (shows the Sprout window briefly on screen)
+  python tools/sia_window_check.py      (shows the Sia window briefly on screen)
 """
 import ctypes
 import http.client
@@ -32,8 +32,8 @@ def post(path):
     return c.getresponse().status
 
 
-def sprout_windows():
-    """Top-level windows titled 'Sprout' owned by the Sprout backend: [(hwnd, visible)]."""
+def sia_windows():
+    """Top-level windows titled 'Sia' owned by the Sia backend: [(hwnd, visible)]."""
     found = []
 
     @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -42,7 +42,7 @@ def sprout_windows():
         if n:
             buf = ctypes.create_unicode_buffer(n + 1)
             u32.GetWindowTextW(hwnd, buf, n + 1)
-            if buf.value == "Sprout":
+            if buf.value == "Sia":
                 found.append((hwnd, bool(u32.IsWindowVisible(hwnd))))
         return True
     u32.EnumWindows(cb, 0)
@@ -92,48 +92,48 @@ def tree_mb(pid):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     proc = subprocess.Popen([PYW, str(ROOT / "app" / "server.py"), "--background"], cwd=str(ROOT))
-    up = wait_for(lambda: any(True for _ in sprout_windows()), 30)
+    up = wait_for(lambda: any(True for _ in sia_windows()), 30)
     check("background start creates the window", up is not None, f"{up and round(up, 1)} s after launch")
-    check("…and keeps it hidden", sprout_windows() and not any(v for _, v in sprout_windows()), str(sprout_windows()))
+    check("…and keeps it hidden", sia_windows() and not any(v for _, v in sia_windows()), str(sia_windows()))
     time.sleep(15)  # the hidden page has loaded by now: it must not have woken the model
     mb, names = tree_mb(proc.pid)
     no_model = not any(n.lower() == "llama-server.exe" for n in names)
-    check("no model loaded in the background (after 15 s)", no_model, f"Sprout process tree {mb:.0f} MB: {sorted(set(names))}")
+    check("no model loaded in the background (after 15 s)", no_model, f"Sia process tree {mb:.0f} MB: {sorted(set(names))}")
 
     post("/api/show")
-    shown = wait_for(lambda: any(v for _, v in sprout_windows()), 10)
+    shown = wait_for(lambda: any(v for _, v in sia_windows()), 10)
     check("summon shows the window", shown is not None, f"{shown and round(shown * 1000)} ms")
     time.sleep(3)  # let the page draw
-    hwnd = next(h for h, v in sprout_windows() if v)
+    hwnd = next(h for h, v in sia_windows() if v)
     shot = capture(hwnd)
-    out = Path(os.environ.get("TEMP", ".")) / "sprout-window.png"
+    out = Path(os.environ.get("TEMP", ".")) / "sia-window.png"
     shot.save(out)
     dark = sum(1 for p in shot.resize((64, 64)).getdata() if max(p[:3]) < 40) / 4096
-    check("window renders Sprout (captured from the window itself)", dark > 0.6,
-          f"{shot.size}, {dark:.0%} dark pixels (Sprout's background is near-black), saved to {out}")
+    check("window renders Sia (captured from the window itself)", dark > 0.6,
+          f"{shot.size}, {dark:.0%} dark pixels (Sia's background is near-black), saved to {out}")
 
     u32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE, as the title-bar X does
-    hidden = wait_for(lambda: not any(v for _, v in sprout_windows()), 10)
-    check("closing hides (Sprout stays running)", hidden is not None and proc.poll() is None,
+    hidden = wait_for(lambda: not any(v for _, v in sia_windows()), 10)
+    check("closing hides (Sia stays running)", hidden is not None and proc.poll() is None,
           f"hidden after {hidden and round(hidden * 1000)} ms; backend alive: {proc.poll() is None}")
 
     t2 = time.time()
     second = subprocess.run([sys.executable, str(ROOT / "app" / "server.py")], cwd=str(ROOT), timeout=60)
-    shown2 = wait_for(lambda: any(v for _, v in sprout_windows()), 10)
-    check("second launch reuses the window", shown2 is not None and len(sprout_windows()) == 1,
-          f"second process exited {second.returncode} in {time.time() - t2:.1f} s; windows: {len(sprout_windows())}")
+    shown2 = wait_for(lambda: any(v for _, v in sia_windows()), 10)
+    check("second launch reuses the window", shown2 is not None and len(sia_windows()) == 1,
+          f"second process exited {second.returncode} in {time.time() - t2:.1f} s; windows: {len(sia_windows())}")
 
     p = psutil.Process(proc.pid)
     procs = [p] + [c for c in p.children(recursive=True) if c.name().lower() != "llama-server.exe"]
     mb = sum(x.memory_full_info().uss for x in procs) / 2 ** 20  # unique memory: RSS counts shared pages repeatedly
-    check("unique memory of Sprout itself (window + backend, model excluded)", mb < 300,
+    check("unique memory of Sia itself (window + backend, model excluded)", mb < 300,
           f"{mb:.0f} MB in {len(procs)} processes: {sorted(set(x.name() for x in procs))}")
     post("/api/quit")
     gone = wait_for(lambda: proc.poll() is not None, 30)
     time.sleep(2)
     left = [p.info["name"] for p in psutil.process_iter(["name", "ppid"]) if p.info["name"] == "llama-server.exe"]
-    check("quit stops everything", gone is not None and not sprout_windows() and not left,
-          f"exit after {gone and round(gone, 1)} s; windows left {len(sprout_windows())}; llama-server left {len(left)}")
+    check("quit stops everything", gone is not None and not sia_windows() and not left,
+          f"exit after {gone and round(gone, 1)} s; windows left {len(sia_windows())}; llama-server left {len(left)}")
     print(f"\n{sum(RESULTS)}/{len(RESULTS)} checks passed")
 
 

@@ -34,7 +34,7 @@ Along the way I found:
 - that speculative decoding speeds Gemma up but *slows* gpt-oss down;
 - a security flaw in llama-server's router mode.
 
-I packaged the results as **Sprout**, a private, offline desktop AI app.
+I packaged the results as **Sia**, a private, offline desktop AI app.
 
 ---
 
@@ -136,7 +136,7 @@ flowchart TD
   H --> I["Output-preserving speed-ups:<br/>MTP drafts, threads, long context, RAM pressure"]
   I --> J{"Is QAT lossless?<br/>70 questions: can't tell"}
   J -->|"210 questions"| K["Verdict: QAT −4.8 pts (p = 0.041)<br/>Gemma +8.6 over gpt-oss"]
-  K --> L["Sprout: an offline app<br/>built on the measured setups"]
+  K --> L["Sia: an offline app<br/>built on the measured setups"]
   L --> M["Final audit: provenance, numbers,<br/>bugs found and fixed"]
 ```
 
@@ -261,13 +261,13 @@ off and a 4,096-token answer budget. An answer still cut off at that budget coun
   only detect gaps of about 10 points (finding 33).
 - So I extended the sample to **210 questions**, 15 per subject. The 70 are a prefix of the 210
   (verified), so no question ran twice (finding 48).
-- I then ran gpt-oss on the same 210 to decide which model Sprout should use (finding 51).
+- I then ran gpt-oss on the same 210 to decide which model Sia should use (finding 51).
 
 The results and their analysis are in sections 5.1–5.3.
 
-### Step 8: Sprout, the app
+### Step 8: Sia, the app
 
-I turned the measured setups into Sprout, a one-click offline desktop app. Its design principles:
+I turned the measured setups into Sia, a one-click offline desktop app. Its design principles:
 - **Behaviour:**
   - a human texting style without emoji, and not a messenger clone;
   - calm and futuristic rather than organic or cluttered;
@@ -275,17 +275,17 @@ I turned the measured setups into Sprout, a one-click offline desktop app. Its d
 - **Access:** read-only laptop access with per-call permission.
 - **Personal:** the model knows who it works for, and there is no extra content filter.
 
-The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I found and fixed:
+The details are in [docs/SIA.md](docs/SIA.md). Engineering problems I found and fixed:
 - **llama-server's router mode strips the API key** from the model servers it starts
   (`unset_reserved_args` in `server-models.cpp`, finding 44). With CORS open to every origin, any
-  web page in the browser could have used the local model. Sprout manages its own keyed servers,
+  web page in the browser could have used the local model. Sia manages its own keyed servers,
   and a unit test enforces it.
 - **llama-server's default 8 GiB prompt cache** would push Gemma's experts out of RAM. I capped it
   at 1 GiB (finding 41).
 - **Tool results were cut at 6,000 characters,** so the model miscounted a file it could only
   half see. The cap is now 24,000 (finding 45).
-- **Ending Microsoft Edge killed Sprout** (found using Task Manager): the app window was an Edge
-  app window. Sprout now has its own WebView2 window, shown in ~0.1 s and using 177 MB with no
+- **Ending Microsoft Edge killed Sia** (found using Task Manager): the app window was an Edge
+  app window. Sia now has its own WebView2 window, shown in ~0.1 s and using 177 MB with no
   model loaded (finding 52).
 - **A hidden window woke the model in the background.** Fixed and tested: no model loads until the
   window is shown.
@@ -303,25 +303,25 @@ The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I foun
 - **A wider daily-use test found ten more problems** (finding 57). The worst: claiming searches it
   never ran, a guess submitted on the user's behalf, and long chats failing outright. All were fixed and re-tested: the final full run
   passed 32 of 33 everyday requests, and its one failure (a made-up game guess) was then fixed.
-- **From reading to acting** (finding 58). I gave Sprout eight grouped action tools (open,
+- **From reading to acting** (finding 58). I gave Sia eight grouped action tools (open,
   control, window, power, screenshot, copy, save_note, reminder):
   - each action is approved on a card, and dangerous ones are asked every time;
   - nothing can be deleted, installed or run from a file;
   - a live test verifies each action against the laptop's real state and restores it: 32/32.
 - **Undo and cancel** (finding 59). Every action records how to reverse it, so "undo that", "cancel
   the tea timer" or "never mind the shutdown" work. Timers take seconds and the duration the user typed
-  wins. When the user declines a card, Sprout writes "Okay, not done" itself: the model had once
+  wins. When the user declines a card, Sia writes "Okay, not done" itself: the model had once
   confirmed a declined cancel as done.
 - **An exact calculator** (finding 60). The model answered 876 × 88894 wrong by 2,172, with full
   confidence: language models predict digits rather than compute them. Every number now comes from a
   calculator the model is required to use (exact whole numbers and decimals, 40-digit maths functions),
   and 8 of 8 real questions from arithmetic to finance, medicine and physics came out exactly right.
 - **General abilities from existing parts** (finding 61). Rather than adding one special tool per
-  problem, I made Sprout a host for MCP plug-ins (the common plug-in format for AI tools, also
+  problem, I made Sia a host for MCP plug-ins (the common plug-in format for AI tools, also
   supported by llama.cpp) and gave it a Python sandbox (Pydantic Monty). Memory now persists across
   chats with approved saves and verified forgetting. An app-control plug-in was integrated too, but it
   made VS Code hang, so it is switched off until it can work without touching other windows.
-- **Voice mode** (finding 62). Sprout listens and speaks in the same window, offline on the CPU, with
+- **Voice mode** (finding 62). Sia listens and speaks in the same window, offline on the CPU, with
   the same Gemma model. Each part was chosen by measuring on this laptop: Silero VAD, Parakeet 110M
   for speech recognition, and Kokoro for 12 natural voices. The first design's larger recogniser pushed
   Gemma into SSD paging. A model a quarter the size, just as accurate, brought the reply gap to a median
@@ -346,7 +346,7 @@ Before publishing I re-audited everything:
   batch at the context length, so a short decode test runs `-ub 512` and `-ub 2048` identically
   (finding 53). `bench.py` now warns about this. The fair test didn't fit the RAM safety margin,
   so the advice stays conditional.
-- **A Sprout bug** surfaced while I was taking screenshots (finding 54). The RAM-aware model
+- **A Sia bug** surfaced while I was taking screenshots (finding 54). The RAM-aware model
   choice counted the loaded Gemma's own memory as "used", and would have swapped a working Gemma
   for gpt-oss on the next mode switch. Fixed, with regression tests.
 - **The tests no longer depend on the GPU**, so they also run on machines without one (CI).
@@ -491,14 +491,14 @@ Before publishing I re-audited everything:
   in RAM and are re-read from the SSD every token (19 GB read in one test).
 - **Fastest is not always best here:** `-lm none`, fastest when RAM is plentiful, is the most
   fragile under pressure. It doesn't fit at all with +4 GiB taken.
-- **How Sprout uses this:** with less than 5.5 GiB free, it starts gpt-oss instead of Gemma.
+- **How Sia uses this:** with less than 5.5 GiB free, it starts gpt-oss instead of Gemma.
 
 ### 5.6 Recommended setups (this laptop)
 
 | Goal | Setup | Speed | MMLU-Pro |
 |---|---|---|---|
 | Most intelligence | Gemma 4 Q8_0, `-lm auto -t 16`, MTP draft n3 | 12.0 tok/s | 83.8% |
-| Best balance (Sprout's default) | Gemma 4 QAT, `-lm auto -fitt 128 -t 16`, MTP draft n2 | 31–35 tok/s | 79.0% |
+| Best balance (Sia's default) | Gemma 4 QAT, `-lm auto -fitt 128 -t 16`, MTP draft n2 | 31–35 tok/s | 79.0% |
 | Exactly as released, robust to RAM pressure | gpt-oss-20b, `-lm none -fitt 256 -t 8` | 27.7 tok/s | 70.5% |
 
 Full commands: lab notebook, "Recommended settings".
@@ -524,39 +524,41 @@ Full commands: lab notebook, "Recommended settings".
 | 15 | Small MoE cache thrashes | 0% hit rate, −62% | Recorded as a negative result; matches the break-even analysis | notebook, "MoE expert cache" |
 | 16 | NVML PCIe counters exceed the link maximum | 25.6 GB/s on a 15.75 GB/s link | Not used as absolute throughput | 18 |
 | 17 | PowerShell passed `0,2,4,6` as one string | A 246 GiB hold requested | Comma-string parameters, capped at 8 GiB | method |
-| 18 | Router mode strips the API key | Unkeyed local model server | Sprout's own keyed engine + test | 44 |
+| 18 | Router mode strips the API key | Unkeyed local model server | Sia's own keyed engine + test | 44 |
 | 19 | 8 GiB default prompt cache | Experts pushed out of RAM | Capped at 1 GiB | 41 |
 | 20 | Tool results truncated | Model miscounted a file | Cap raised, tool guidance tightened | 45 |
-| 21 | Sprout depended on Edge | Ending Edge closed Sprout | Native WebView2 window | 52 |
+| 21 | Sia depended on Edge | Ending Edge closed Sia | Native WebView2 window | 52 |
 | 22 | Window test passed falsely | It captured the wrong window | Capture the window's own pixels (`PrintWindow`) | 52 |
 | 23 | Batch size capped by context length | `-ub 2048` decode never really tested | Warning in `bench.py`; test at depth | 53 |
-| 24 | RAM-aware default counted Sprout's own model | Gemma would swap itself out | Count own model as available + tests | 54 |
+| 24 | RAM-aware default counted Sia's own model | Gemma would swap itself out | Count own model as available + tests | 54 |
 | 25 | A test read the real GPU | Would fail on machines without one | Fixed GPU reading in the test, plus a no-GPU case | final audit |
 | 26 | Power cut during a measurement | One run on battery | Marked invalid, rerun on AC | 49 |
-| 27 | Sprout invented the time and a screen resolution | Plausible but unsourced answers | Live clock with every request; location and device tools; no-guessing rule | 55 |
+| 27 | Sia invented the time and a screen resolution | Plausible but unsourced answers | Live clock with every request; location and device tools; no-guessing rule | 55 |
 | 28 | A changing clock line at the top of the prompt | 12–16 s replies (cache re-processed) | Clock moved to the newest message; unit test keeps the prompt stable | 55 |
 | 29 | A volume probe declared Windows' audio interface wrongly | One read called SetMute | Speakers restored; full interface in documented order, getters only | 55 |
 | 30 | The tool loop could end with an empty reply | Answer blank after the last tool round | Final pass without tools | 56 |
 | 31 | The model can't keep a secret word between turns | Contradictory Wordle feedback, wrong Hangman boards | A game referee in code; game moves require a tool call | 56 |
 | 32 | Arithmetic answered without working | 4:40 or 4:50 stated instead of 4:35 in some runs | Automatic short reasoning (320-token budget) for questions that need it | 56 |
-| 33 | Sprout claimed searches and checks it never ran | "I checked your recent files" with no tool call | Honesty rules plus a reminder on the newest message: 0 of 15 invented afterwards | 57 |
+| 33 | Sia claimed searches and checks it never ran | "I checked your recent files" with no tool call | Honesty rules plus a reminder on the newest message: 0 of 15 invented afterwards | 57 |
 | 34 | Long chats were rejected beyond 16,384 tokens | "request (37,287 tokens) exceeds the available context size" | Oldest messages left out in blocks; exact-count retry; a clear message when one message is too long | 57 |
 | 35 | The model couldn't see a running game | Restarted the game on the first guess | Game state on the newest message; "start" keeps a running game | 57 |
 | 36 | "Is my Bluetooth on?" answered yes while it was off | The tool reported the adapter, not the radio | Radio state from Windows' Radios API | 58 |
 | 37 | An action announced but never taken | "Bluetooth is now off" with no tool call | Commands force a tool call; questions don't | 58 |
-| 38 | Store-app and folder windows invisible to Sprout | Calculator, Settings and Downloads "not found" | Window list includes them, matched by title | 58 |
+| 38 | Store-app and folder windows invisible to Sia | Calculator, Settings and Downloads "not found" | Window list includes them, matched by title | 58 |
 | 39 | A test's theme change left the taskbar white | Setting restored, taskbar not redrawn | Both redraw messages sent; visible tests only with the owner's OK; restore verified on screen | 58 |
 | 40 | "A timer for 10 seconds" became 10 minutes | The tool took only minutes; the model converted badly | Seconds supported; the duration the user typed wins | 59 |
 | 41 | "Cancel the tea timer" found nothing | The model passed the name as the reminder's id | Names matched in either field; "all" supported; the card names what goes | 59 |
-| 42 | A declined card reported as done ("Shutdown cancelled.") | The model wrote a confident confirmation anyway | When every action is declined, Sprout writes "Okay, not done" itself | 59 |
+| 42 | A declined card reported as done ("Shutdown cancelled.") | The model wrote a confident confirmation anyway | When every action is declined, Sia writes "Okay, not done" itself | 59 |
 | 43 | Wrong arithmetic (876 × 88894 → 77,868,972; a 49-digit product given 38 digits) | Models predict digits as tokens; they don't compute | An exact calculator the model must use for every number | 60 |
-| 44 | Every new gap got its own special tool | Fixing one task at a time | A Python sandbox (Monty) and MCP plug-ins (Memory), with Sprout's approval rules on each | 61 |
-| 45 | "I'll keep that in mind" with nothing saved; "forgot" with nothing deleted | The model claimed what no tool did | A claim to remember triggers a real, approved save; Sprout's own `forget` lists and verifies what goes | 61 |
+| 44 | Every new gap got its own special tool | Fixing one task at a time | A Python sandbox (Monty) and MCP plug-ins (Memory), with Sia's approval rules on each | 61 |
+| 45 | "I'll keep that in mind" with nothing saved; "forgot" with nothing deleted | The model claimed what no tool did | A claim to remember triggers a real, approved save; Sia's own `forget` lists and verifies what goes | 61 |
 | 46 | VS Code hung twice while testing app control | Windows-MCP's UI Automation hooks every window | Windows-MCP switched off; the tab counter touches only browser frames | 61 |
-| 47 | Asked who made it, Sprout said Google | Its prompt never named its creator, so the model fell back on its training | The prompt names the owner as creator; the base model is named only when asked | 62 |
+| 47 | Asked who made it, Sia said Google | Its prompt never named its creator, so the model fell back on its training | The prompt names the owner as creator; the base model is named only when asked | 62 |
 | 48 | Voice replies took 8–11 s | The voice models' RAM pushed the 26B model into SSD paging | A recogniser a quarter the size (same accuracy), a shorter per-turn note: median 4.4 s | 62 |
 | 49 | Famous people "unknown" (Abdul Kalam, Aryabhata) | An honesty line said "for anything they haven't told you, say you don't know" | Limited to facts about the user and the laptop; 7 knowledge questions in the daily check | 66 |
 | 50 | Voice answered a friend's conversation line by line | Always listening | "Hey Sprout" wake phrase (keyword spotter: 29/30 caught, 0/42 false alarms), follow-up window, stop words, pause button | 66 |
+| 51 | "Live location" read as "liv" | The voice's front end looked words up without their meaning | misaki, Kokoro's own front end, reads the sentence's grammar: 29/32 heteronyms right instead of 17/32 | 67 |
+| 52 | "Hey Sia" rarely woke it, or woke on "Hey, see you tomorrow" | A short name is a weak keyword | The recogniser is nudged towards "Sia" and the transcript decides: 40/48 caught, 1/66 false alarms | 67 |
 
 ---
 
@@ -570,7 +572,7 @@ Full commands: lab notebook, "Recommended settings".
     look.
 - **The reference is Q8_0, not BF16.** The 50 GB BF16 model can't run here.
 - **Vendor and third-party scores** are quoted and labelled, not re-measured.
-- **Sprout** is a personal tool without an independent security review.
+- **Sia** is a personal tool without an independent security review.
 - **Not done:**
   - the light-model study (partly run; no result claimed);
   - a large-MoE-cache test (needs ~10 GB free RAM);
@@ -579,7 +581,7 @@ Full commands: lab notebook, "Recommended settings".
 
 ## 7. Future work
 
-- **Sprout, toward an assistant that runs the laptop** (README "Roadmap"):
+- **Sia, toward an assistant that runs the laptop** (README "Roadmap"):
   - actions with approval: done (finding 58);
   - on-request optimisation (startup apps, memory hogs, disk, battery wear);
   - a faster first reply;

@@ -1,4 +1,4 @@
-"""Actions Sprout's model may take on the laptop, each one approved by the user first.
+"""Actions Sia's model may take on the laptop, each one approved by the user first.
 
 Security model (in addition to the per-action approval card in app/server.py):
 - A fixed set of actions with validated arguments; no shell, no free-form commands. Arguments reach
@@ -7,7 +7,7 @@ Security model (in addition to the per-action approval card in app/server.py):
   from files; force-kill processes; touch password or key locations.
 - "Open" launches only apps registered in the Start menu, opens documents and folders with their
   default app (executable and script types are refused), and websites over http(s) only.
-- New files are only written inside Documents\\Sprout, never over an existing file.
+- New files are only written inside Documents\\Sia, never over an existing file.
 - Power actions (sleep, restart, shut down) are marked dangerous: they always need a fresh
   approval; restart and shut down wait 60 s and can be cancelled.
 - Every action is appended to app-data/logs/actions.log.
@@ -85,12 +85,12 @@ def open_app(name):
                "task manager": "task manager", "calc": "calculator", "cmd": None, "powershell": None, "terminal": None}
     key = str(name or "").strip().lower()
     if key in aliases and aliases[key] is None:
-        return {"error": "Sprout doesn't open command shells (they could run anything)."}
+        return {"error": "Sia doesn't open command shells (they could run anything)."}
     app, candidates = _match_app(aliases.get(key, key))
     if not app:
         return {"error": f"No app named '{name}' in the Start menu."}
     if re.search(r"powershell|command prompt|terminal|cmd\b", app["name"], re.I):
-        return {"error": "Sprout doesn't open command shells (they could run anything)."}
+        return {"error": "Sia doesn't open command shells (they could run anything)."}
     subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app['id']}"], creationflags=NO_WINDOW)
     # report what really happened: wait briefly for the app's window (Store apps can start slowly)
     words = [w for w in re.findall(r"[a-z0-9]+", app["name"].lower()) if len(w) > 2][:2]
@@ -132,7 +132,7 @@ def open_file(path):
     import tools  # safe_path: local paths only, secret locations refused
     p = tools.safe_path(path, "any")
     if p.is_file() and p.suffix.lower() in RUNNABLE:
-        return {"error": f"{p.name} is a program or script; Sprout doesn't run files. Ask to open an app by name instead."}
+        return {"error": f"{p.name} is a program or script; Sia doesn't run files. Ask to open an app by name instead."}
     os.startfile(str(p))
     return {"opened": str(p), "kind": "folder" if p.is_dir() else "file"}
 
@@ -209,8 +209,8 @@ def close_app(name):
     target = str(name or "").strip().lower().removesuffix(".exe")
     if not target:
         return {"error": "say which app to close"}
-    if target in ("sprout", "pythonw", "python", "llama-server", "explorer", "dwm", "winlogon", "csrss"):
-        return {"error": f"Sprout won't close {name}."}
+    if target in ("sia", "sprout", "pythonw", "python", "llama-server", "explorer", "dwm", "winlogon", "csrss"):
+        return {"error": f"Sia won't close {name}."}
     u32 = ctypes.windll.user32
     closed = set()
 
@@ -249,9 +249,9 @@ def power(mode):
         return {"sleeping": True}
     if mode in ("restart", "shutdown"):
         subprocess.run(["shutdown", "/r" if mode == "restart" else "/s", "/t", "60",
-                        "/c", f"Sprout: {mode} in 60 seconds (asked for in Sprout). Cancel: ask Sprout, or run shutdown /a."],
+                        "/c", f"Sia: {mode} in 60 seconds (asked for in Sia). Cancel: ask Sia, or run shutdown /a."],
                        creationflags=NO_WINDOW, timeout=10)
-        return {"scheduled": mode, "in_seconds": 60, "cancel": "ask Sprout to cancel the shutdown"}
+        return {"scheduled": mode, "in_seconds": 60, "cancel": "ask Sia to cancel the shutdown"}
     if mode == "cancel":
         r = subprocess.run(["shutdown", "/a"], creationflags=NO_WINDOW, capture_output=True, text=True, timeout=10)
         return {"cancelled": r.returncode == 0}
@@ -264,7 +264,7 @@ def take_screenshot():
     import tools
     folder = Path(tools.user_folders()["pictures"]) / "Screenshots"
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"Sprout {dt.datetime.now():%Y-%m-%d %H.%M.%S}.png"
+    path = folder / f"Sia {dt.datetime.now():%Y-%m-%d %H.%M.%S}.png"
     ImageGrab.grab(all_screens=True).save(path)
     return {"saved": str(path)}
 
@@ -299,13 +299,13 @@ def copy_to_clipboard(text):
 
 
 def save_note(name, text):
-    """Save text as a new file in Documents\\Sprout (never overwrites; text formats only)."""
+    """Save text as a new file in Documents\\Sia (never overwrites; text formats only)."""
     import tools
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", str(name or "").strip())[:80] or "note"
     stem, ext = os.path.splitext(name)
     if ext.lower() not in (".txt", ".md", ".csv", ".json"):
         stem, ext = name, ".txt"
-    folder = Path(tools.user_folders()["documents"]) / "Sprout"
+    folder = Path(tools.user_folders()["documents"]) / "Sia"
     folder.mkdir(parents=True, exist_ok=True)
     path, i = folder / f"{stem}{ext}", 1
     while path.exists():  # never overwrite
@@ -380,7 +380,7 @@ def set_reminder(text, minutes=None, at=None, seconds=None):
     fmt = "%A %d %B, %I:%M:%S %p" if secs < 120 else "%A %d %B, %I:%M %p"  # seconds only for short timers
     return {"reminder": text, "at": when.strftime(fmt).replace(" 0", " "),
             "in": f"{secs:.0f} seconds" if secs < 120 else f"{secs / 60:.0f} minutes",
-            "note": "shown as a Windows notification with a sound while Sprout is running"}
+            "note": "shown as a Windows notification with a sound while Sia is running"}
 
 
 def list_reminders():
@@ -598,7 +598,7 @@ def record(name, args, result):
     elif name == "copy" and CLIPBOARD_BEFORE["text"] is not None:
         undo, desc = ("copy_to_clipboard", {"text": CLIPBOARD_BEFORE["text"] or " "}), "put the previous clipboard text back"
     elif name in ("screenshot", "save_note"):
-        desc = f"Sprout doesn't delete files; it's at {result.get('saved', '?')}"
+        desc = f"Sia doesn't delete files; it's at {result.get('saved', '?')}"
     HISTORY.append({"n": len(HISTORY) + 1, "tool": name, "args": args, "undo": undo, "desc": desc,
                     "done": False, "label": f"{name} {json.dumps(args)[:120]}"})
     del HISTORY[:-50]
@@ -629,7 +629,7 @@ def undo(what="last"):
     """Undo one earlier action of this session: the last one, or the latest that matches (e.g. "volume")."""
     h = _undo_candidate(what)
     if not h:
-        return {"error": "nothing Sprout did in this session matches that"}
+        return {"error": "nothing Sia did in this session matches that"}
     if not h["undo"]:
         return {"error": f"that can't be undone: {h['desc'] or 'no way back for this action'}"}
     fn, kw = h["undo"]

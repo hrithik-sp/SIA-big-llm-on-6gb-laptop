@@ -5,6 +5,9 @@
 > numbered in the order they were made and are cited by number elsewhere. For the narrative,
 > read [REPORT.md](../REPORT.md); for the short version, the [README](../README.md). Raw data:
 > `results/*.jsonl`.
+>
+> The app is called **Sia**. Until finding 67 it was called Sprout, and earlier findings keep that name
+> (and the wake phrase "Hey Sprout") as they were measured.
 
 **Goal: run a big model on this small system without
 compromising its intelligence or perplexity.** Success means outputs that match the
@@ -53,7 +56,7 @@ What made the difference (all output-preserving):
 Daily use: with mmap, gpt-oss loses only 5% when other apps take 6 GB of RAM, while QAT
 halves beyond +4 GB (finding 40).
 
-[**Sprout**](#sprout-the-one-click-offline-app) packages these setups
+[**Sia**](#sia-formerly-sprout-the-one-click-offline-app) packages these setups
 into a private offline desktop app.
 
 **Bottom line:**
@@ -926,7 +929,7 @@ error.
     - The first answer after a start is always slower (cold: 11–20 tok/s) while
       the OS pulls the needed experts from the SSD.
 
-## Sprout: the one-click offline app
+## Sia (formerly Sprout): the one-click offline app
 
 **Sprout** (`app/`) puts the measured best setups into a private, offline desktop app.
 
@@ -1029,7 +1032,7 @@ How it works:
     - llama.cpp's auto-fit can't measure the MTP head ("failed to measure the memory of
       the extra model, fitting without it"). Peak VRAM still stayed at ≤ 5.54 of
       6 GiB in every run.
-43. **End-to-end check:** `tools/sprout_e2e.py`, real models, **12/12 checks passed**.
+43. **End-to-end check:** `tools/sia_e2e.py`, real models, **12/12 checks passed**.
     - **Chat** answered "I'm Sprout." (30.7 s including the first model load).
     - **See:**
       - read "SPROUT TEST 42" exactly;
@@ -1058,9 +1061,9 @@ How it works:
       (`ChatModel`).
     - A unit test asserts that every chat-server command carries `--api-key` and never
       `--models-preset`.
-    - Rerun of `tools/sprout_e2e.py` on the new engine: **12/12 passed**. No unkeyed
+    - Rerun of `tools/sia_e2e.py` on the new engine: **12/12 passed**. No unkeyed
       warning appears in the log.
-45. **Tool use with real models** (`tools/sprout_tools_check.py`, temporary settings,
+45. **Tool use with real models** (`tools/sia_tools_check.py`, temporary settings,
     auto-approve or deny):
     - "who's your boss?" gave "That would be you, Hrithik."
     - Tabs and CPU: 2 tools, both correct.
@@ -1077,7 +1080,7 @@ How it works:
       Downloads. The tool guidance now asks for the fewest calls, only for what was
       asked, with no repeats.
 
-    After both changes, `sprout_e2e.py` passed 12/12 again.
+    After both changes, `sia_e2e.py` passed 12/12 again.
 46. **Path guard tested from a file** (not a shell, which mangles backslashes): all of
     these are refused:
     - `\\server\share`, `\\.\PhysicalDrive0`, `\\?\C:\...\SAM`, `//server/share`;
@@ -1085,7 +1088,7 @@ How it works:
     - `..\.ssh\id_rsa`;
     - Chrome `Login Data`, Edge `Cookies`, `.env`, `*.pem`, Windows `Credentials`.
 
-    These cases are kept as unit tests (`tests/test_sprout.py`).
+    These cases are kept as unit tests (`tests/test_sia.py`).
 
 ### Q8_0 streamed from SSD: placement and threads (tag `q8-ssd-sweep-v1`)
 
@@ -1162,7 +1165,7 @@ Goal: Sprout separate from Edge, quick and smooth.
   only lets the process the user just started take the foreground.
 - **Fallback:** without pywebview, Sprout uses an Edge app window.
 
-52. **`tools/sprout_window_check.py`: 9/9 checks passed.**
+52. **`tools/sia_window_check.py`: 9/9 checks passed.**
 
     | Check | Result |
     |---|---|
@@ -1200,11 +1203,11 @@ Goal: Sprout separate from Edge, quick and smooth.
       load would replace a working Gemma with gpt-oss.
     - **Fix:** memory held by Sprout's own chat server counts as available
       (`choose_default_model`). Two regression tests (`DefaultModel` in
-      `tests/test_sprout.py`). Retaken screenshots show "Gemma 4 26B (QAT) ready".
+      `tests/test_sia.py`). Retaken screenshots show "Gemma 4 26B (QAT) ready".
 
 55. **Sprout couldn't tell the time or its location, and invented answers instead.**
     - **Test:** ten everyday laptop questions with the real model, before and after
-      (`tools/sprout_tools_check.py "question" ...`).
+      (`tools/sia_tools_check.py "question" ...`).
 
       | Question | Before | After |
       |---|---|---|
@@ -1235,7 +1238,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       line that changes every minute made it re-process the whole conversation (~2,000 tokens)
       about once a minute: 12–16 s replies in a real chat. The time now goes at the end of the
       newest message. Measured over six turns crossing a minute boundary
-      (`tools/sprout_latency_check.py`):
+      (`tools/sia_latency_check.py`):
       - only 87–119 new tokens are processed per turn, with ~1,900–2,000 reused;
       - the first word arrives in 2–3 s (10.5 s for a turn that reads the battery);
       - a unit test keeps the system prompt identical over time.
@@ -1247,7 +1250,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       getters; two consecutive reads confirm they change nothing.
 
 56. **Sprout's Chat behaviour, measured and fixed: 3 of 8 scenarios passed before, 8 of 8 after.**
-    - **Test:** `tools/sprout_behaviour_check.py` replays eight conversations based on a real chat
+    - **Test:** `tools/sia_behaviour_check.py` replays eight conversations based on a real chat
       with the real model and scores them automatically:
       - greetings: short, no filler laughter, the owner's name in at most one of four replies;
       - the owner is the boss, not a friend;
@@ -1306,7 +1309,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       it reasons.
 
 57. **A daily-use test found eleven more problems; all fixed.**
-    - **Test:** `tools/sprout_daily_check.py`, 33 realistic requests with the real models:
+    - **Test:** `tools/sia_daily_check.py`, 33 realistic requests with the real models:
       - Chat: memory, Hinglish, Hindi script, identity, long explanations, code, date and unit
         maths, knowledge, news it can't know, a rude message;
       - laptop: disk space checked against the real value, startup apps, temperature, reading a
@@ -1364,7 +1367,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       now require a tool call; questions ("how do I turn off Bluetooth?") don't. Checked on 30 phrasings.
     - **Reading added:** window titles ("what's open in VS Code"), installed games (Steam, Epic, Xbox, known
       publishers), and Sprout's own processes labelled as itself in memory reports.
-    - **Live test** (`tools/sprout_actions_check.py --visible`): 32 checks with the real model, each verified
+    - **Live test** (`tools/sia_actions_check.py --visible`): 32 checks with the real model, each verified
       against the laptop's real state (Windows audio, brightness, radios, theme, windows, files, clipboard),
       covering volume and relative "a bit louder", mute, brightness and "dim a little", Bluetooth on and off,
       theme, opening and closing Notepad, Calculator, a folder, a file and a Settings page, minimise and focus,
@@ -1442,7 +1445,7 @@ Goal: Sprout separate from Edge, quick and smooth.
     - **Why not the Windows Calculator app:** Windows offers programs no way to read its result. Typing
       into its window and reading the screen back would be slow, would take over the screen, and could
       misread. The calculator runs on the laptop like the app does, and is exact to every digit.
-    - **Live check, real model** (`sprout_tools_check.py`), all 8 correct and checked independently:
+    - **Live check, real model** (`sia_tools_check.py`), all 8 correct and checked independently:
 
       | Request | Before (no calculator) | With the calculator |
       |---|---|---|
@@ -1554,7 +1557,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       with the next sentence prepared during playback. In voice mode Sprout answers in spoken style (short,
       no markdown) and skips the automatic thinking pause. While a tool runs it says "One sec." instead of
       going silent. The models load with voice mode and are freed when it stops (~0.7 GB).
-    - **End to end with the real model** (`tools/sprout_voice_check.py`: questions spoken by Sprout's voice,
+    - **End to end with the real model** (`tools/sia_voice_check.py`: questions spoken by Sprout's voice,
       streamed in at real-time pace; Chrome and VS Code open, 8.4 GB free before start):
       - every question transcribed correctly, 0.5–0.6 s after the speech ended;
       - spoken-style replies with no markdown, and "Who created you?" → "Hrithik S P created me.";
@@ -1577,7 +1580,7 @@ Goal: Sprout separate from Edge, quick and smooth.
     - **Needs a person:** the first microphone permission prompt, real speech with the owner's own voice and
       accent, and choosing the voice by ear.
     - **The owner's first real test found three bugs the server-side check couldn't see**, so a check through the
-      real page was added (`tools/sprout_ui_voice_check.py`: headless Edge with a fake microphone playing a spoken
+      real page was added (`tools/sia_ui_voice_check.py`: headless Edge with a fake microphone playing a spoken
       question, the real mic button clicked over the DevTools protocol). It found the bugs one after another:
       - a rewrite had deleted a UI function ("voiceState is not defined");
       - an unread request body ("{}") stayed in the kept-alive connection, so the browser's next request was parsed
@@ -1603,7 +1606,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       name hashed from the exact system prompt, tools and model, and restores it on later starts and wakes. It is
       lossless: llama-server's own state for exactly that text, and on restore it reuses only the part that matches
       the new prompt, so a stale file can't change an answer.
-    - **Measured** (`tools/sprout_coldstart_check.py`; a message sent the moment the model is up; 10.5 GB free
+    - **Measured** (`tools/sia_coldstart_check.py`; a message sent the moment the model is up; 10.5 GB free
       before start):
 
       | | Re-read the prompt | Restore the saved warm-up |
@@ -1671,10 +1674,44 @@ Goal: Sprout separate from Edge, quick and smooth.
       - **interruptions:** while Sprout talks, only "Hey Sprout", "stop" or "wait" cut it off; other speech never does;
       - a **pause** button (nothing is sent while paused), and "Always listening" kept as a setting for when the owner
         is alone. "Hey Sprout" on its own gets "Yes?".
-    - **Checked through the real page** (`sprout_ui_voice_check.py`, with "~" lines spoken by a second voice as a
+    - **Checked through the real page** (`sia_ui_voice_check.py`, with "~" lines spoken by a second voice as a
       friend nearby): the friend's two lines were ignored, and the two "Hey Sprout, …" requests were answered and
       spoken. A unit test of the addressing logic caught an edge case: a closed follow-up window counted speech at the
       very first sample.
+
+67. **Renamed Sia; words said by meaning; a wake phrase that suits a short name.**
+    - **Name.** The owner renamed the app from Sprout to Sia: window, shortcuts ("Sia", "Ask Sia"), prompts ("you are
+      Sia"), the reminder title, notes folder (Documents\Sia), environment variables (`SIA_*`), log (`sia.log`), the
+      test tools (`tools/sia_*.py`, `tests/test_sia.py`) and docs (`docs/SIA.md`).
+    - **Heteronyms.** Kokoro read "live location" as "liv". Words spelled alike but said differently by meaning were
+      collected as a test set (`tools/heteronym_cases.py`: live, read, lead, close, record, present, minute, wind,
+      tear, use, excuse, object, wound, desert, bow; 32 sentences, each with the expected sound). The sherpa-onnx
+      espeak front end, with a one-word fix list, got **17/32** right. **misaki 0.9.4** (Kokoro's own G2P by its
+      author, hexgrad; it tags parts of speech with spaCy, so "live" as an adjective is /laɪv/) got **29/32**. Sia now
+      speaks through misaki and the same Kokoro ONNX model via onnxruntime (real-time factor 0.28 on 4 threads; the old
+      path stays as a fallback). Names are fixed in misaki's dictionary: "Sia" /siə/, "Hrithik" /ɹɪθɪk/. spaCy's
+      dependencies released 2026-10-24 (preshed, murmurhash, cymem) crashed it on Windows, so older versions are pinned.
+    - **"Hey Sia".** A short name is a weak wake word: the keyword spotter caught only **10/30** spoken "Hey Sia"s
+      (six voices), and with 25 spellings ("see ah", "sea", "cia") it caught 19/30 but fired on "Hey, see you
+      tomorrow" and "Hey, see a doctor soon" (**16/66** false alarms). The recogniser alone wrote "Hey Sier", "Hey
+      Sir", "See ya". Fix: sherpa-onnx **hotwords** (contextual biasing: modified beam search with a graph of the
+      hotword's pieces; Parakeet ships no BPE vocabulary, so one is written from its tokens) nudge the recogniser
+      towards "sia", and the decision is made on the **transcript**: it must start with a greeting and a Sia-like
+      word ("sir" counts only if the spotter also heard the phrase). Results on 48 wake phrases and 66 other phrases:
+
+      | Rule (same clips for the last three rows) | Caught | False alarms |
+      |---|---|---|
+      | Keyword spotter alone, 25 spellings (separate run, same phrases) | 29/48 | 16/66 |
+      | Transcript rule, no biasing | 36/48 | 0/66 |
+      | Transcript rule, hotword score 1.5 (used) | **40/48** | **1/66** ("Okay, see ya", which sounds the same) |
+      | Transcript rule, hotword score 2.0 | 44/48 | 3/66 ("see ya", "see here") |
+
+      Biasing costs 12 ms per 3.8 s sentence (91 vs 79 ms). The spotter is kept as a quick first guess: it pauses
+      Sia's voice at once, and the transcript then decides (it no longer stops a reply by itself). Through the
+      listener end to end: a friend's lines ignored, "Hey Sia, what time is it?" answered with the wake phrase removed,
+      "Hey Sia." then a request after a pause answered (follow-up window), "Hey, see you tomorrow" ignored in three voices.
+    - Sources: misaki (github.com/hexgrad/misaki, Apache-2.0); sherpa-onnx hotwords documentation (k2-fsa/sherpa,
+      docs/source/onnx/hotwords); spaCy en_core_web_sm 3.8.0 (MIT).
 
 ## Optimization candidates (each must be measured before it counts)
 
@@ -1764,7 +1801,7 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/check_sysmem_fallback.py` | Verifies VRAM overcommit fails loudly (no silent spill) |
 | `tools/task_eval.py`, `tools/mmlupro_extend.ps1` | GSM8K / MMLU-Pro accuracy, flips and exact sign test (`--report`, comma list of tags); `--skip-from` extends a sample without redoing answered ids. `mmlupro_extend.ps1`: 70 → 210 questions (the 15-per-subject sample contains the 5-per-subject one, verified) |
 | `tools/ram_hold.py`, `tools/ram_pressure.ps1` | Daily-use RAM-pressure test (plan item 7) |
-| `app/` (Sprout), `tools/sprout_e2e.py`, `tests/test_sprout.py` | The offline app (see "Sprout") and its end-to-end and unit tests |
+| `app/` (Sprout), `tools/sia_e2e.py`, `tests/test_sia.py` | The offline app (see "Sprout") and its end-to-end and unit tests |
 | `tools/spec_bench.py`, `tools/spec_prompts.json`, `tools/spec_report.py` | Speculative decoding through `llama-server` (llama-bench has none): fixed varied prompts at temperature 0; per-prompt tok/s, drafted/accepted tokens; losslessness (identical text vs baseline) → `results/spec.jsonl` |
 | `tools/power_mode.py` | Get/set the Windows power mode via `powrprof` and verify it |
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
@@ -1772,10 +1809,10 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
 | `tests/` | 72 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
-| `tools/sprout_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
-| `tools/sprout_actions_check.py` | Laptop actions with the real model, verified against the real state and restored; run only with `--visible` and the owner's OK (finding 58) |
-| `tools/sprout_daily_check.py` | 33 daily-use requests across Chat, Study, Code and Write, laptop lookups, limits and games (finding 57) |
-| `tools/sprout_tools_check.py`, `tools/sprout_window_check.py`, `tools/sprout_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
+| `tools/sia_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
+| `tools/sia_actions_check.py` | Laptop actions with the real model, verified against the real state and restored; run only with `--visible` and the owner's OK (finding 58) |
+| `tools/sia_daily_check.py` | 33 daily-use requests across Chat, Study, Code and Write, laptop lookups, limits and games (finding 57) |
+| `tools/sia_tools_check.py`, `tools/sia_window_check.py`, `tools/sia_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
 | `tools/hash_models.py` | SHA-256 of every model file, compared with Hugging Face's published hash at the pinned revision → `results/model_files.json` |
 
 Large files live outside OneDrive in `C:\Users\sphri\llm`: `llama.cpp\`
@@ -1864,7 +1901,7 @@ tables in this README.
 | Long context (39) | `powershell -File tools\longctx_sweep.ps1` |
 | RAM pressure (40) | `powershell -File tools\ram_pressure.ps1` · `python tools\pressure_report.py --since <time>` |
 | MMLU-Pro QAT vs original (33, 47) | `python tools\task_eval.py <model> --bench mmlupro --per-category 15 --no-think --max-tokens 4096 --label NAME --tag NAME` · `--report --tag NAME --ref Q8_0` |
-| Sprout end to end (43) | `python tools\sprout_e2e.py <testdir>` |
+| Sprout end to end (43) | `python tools\sia_e2e.py <testdir>` |
 
 ### Files used
 

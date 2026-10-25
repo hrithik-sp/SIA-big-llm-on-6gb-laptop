@@ -1,4 +1,4 @@
-"""Sprout's calculator: exact arithmetic for the model, which can't multiply long numbers reliably.
+"""Sia's calculator: exact arithmetic for the model, which can't multiply long numbers reliably.
 
 Whole numbers have unlimited digits and fractions stay exact (1/3 + 1/6 is exactly 1/2), so money and
 dose arithmetic has no rounding error. sqrt, exp, ln and powers like 1.05**2.5 use 40 significant

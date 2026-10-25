@@ -1,14 +1,14 @@
-"""run_python: the model writes a short Python program and Sprout runs it in a sandbox.
+"""run_python: the model writes a short Python program and Sia runs it in a sandbox.
 
 One general tool instead of a new special case for every kind of question (dates, conversions,
 lists, text, formatting, multi-step maths). The sandbox is Pydantic's Monty
 (https://github.com/pydantic/monty, `pydantic-monty` on PyPI): a Python interpreter written in Rust
 that runs in its own worker process, with no files, network, subprocesses or environment variables
 (checked here: open(), os.listdir, import subprocess/socket are all refused), and with time and
-memory limits. A crashed or runaway worker is killed and replaced; Sprout itself is never at risk.
+memory limits. A crashed or runaway worker is killed and replaced; Sia itself is never at risk.
 
-Monty has no calendar, statistics, string, decimal or fractions modules, so Sprout lends it the pure
-functions of the first three (they run in Sprout's own Python and touch nothing on the laptop) and two
+Monty has no calendar, statistics, string, decimal or fractions modules, so Sia lends it the pure
+functions of the first three (they run in Sia's own Python and touch nothing on the laptop) and two
 exact helpers from calc.py: exact("expression") and words(number, "indian" | "international").
 Its clock runs in UTC unless told otherwise, so each run gets the laptop's own UTC offset.
 """

@@ -1,4 +1,4 @@
-# Fixed laptop actions for Sprout (each one asked for and approved by the user first). Prints JSON.
+# Fixed laptop actions for Sia (each one asked for and approved by the user first). Prints JSON.
 #   powershell -NoProfile -File actions.ps1 -Action <name> [-Value <string>] [-Flag <0|1>]
 # Arguments arrive as plain strings (never evaluated as code). Nothing here deletes, installs or runs files.
 param([Parameter(Mandatory)][string]$Action, [string]$Value = "", [int]$Flag = 0)
@@ -20,7 +20,7 @@ interface IMMDevice { int Activate(ref Guid id, int ctx, IntPtr p, [MarshalAs(Un
 [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IMMDeviceEnumerator { int f(); int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice d); }
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
-public static class SproutAudio {
+public static class SiaAudio {
   static IAudioEndpointVolume Ep() {
     var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator()); IMMDevice dev; en.GetDefaultAudioEndpoint(0, 1, out dev);
     var iid = typeof(IAudioEndpointVolume).GUID; object o; dev.Activate(ref iid, 23, IntPtr.Zero, out o);
@@ -40,10 +40,10 @@ function Await($op, [Type]$t) {
 try {
   switch ($Action) {
     "volume" {  # Value = 0-100 or "", Flag: 1 = mute, 2 = unmute, 0 = leave
-      $out.before = @{ volume_pct = [math]::Round(100 * [SproutAudio]::Level()); muted = [SproutAudio]::Muted() }
-      if ($Value -ne "") { [SproutAudio]::SetLevel([math]::Max(0, [math]::Min(100, [double]$Value)) / 100) }
-      if ($Flag -eq 1) { [SproutAudio]::SetMuted($true) } elseif ($Flag -eq 2) { [SproutAudio]::SetMuted($false) }
-      $out.after = @{ volume_pct = [math]::Round(100 * [SproutAudio]::Level()); muted = [SproutAudio]::Muted() }
+      $out.before = @{ volume_pct = [math]::Round(100 * [SiaAudio]::Level()); muted = [SiaAudio]::Muted() }
+      if ($Value -ne "") { [SiaAudio]::SetLevel([math]::Max(0, [math]::Min(100, [double]$Value)) / 100) }
+      if ($Flag -eq 1) { [SiaAudio]::SetMuted($true) } elseif ($Flag -eq 2) { [SiaAudio]::SetMuted($false) }
+      $out.after = @{ volume_pct = [math]::Round(100 * [SiaAudio]::Level()); muted = [SiaAudio]::Muted() }
     }
     "brightness" {
       $before = (Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness | Where-Object Active | Select-Object -First 1).CurrentBrightness
@@ -77,7 +77,7 @@ try {
       [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
       $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
       $esc = [System.Security.SecurityElement]::Escape($Value)
-      $xml.LoadXml("<toast scenario='reminder'><visual><binding template='ToastGeneric'><text>Sprout reminder</text><text>$esc</text></binding></visual><audio src='ms-winsoundevent:Notification.Reminder'/><actions><action content='Dismiss' arguments='dismiss' activationType='system'/></actions></toast>")
+      $xml.LoadXml("<toast scenario='reminder'><visual><binding template='ToastGeneric'><text>Sia reminder</text><text>$esc</text></binding></visual><audio src='ms-winsoundevent:Notification.Reminder'/><actions><action content='Dismiss' arguments='dismiss' activationType='system'/></actions></toast>")
       $aumid = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
       [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
       $out.shown = $true

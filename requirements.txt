@@ -1,14 +1,27 @@
 # Python 3.11 on Windows 11. Versions are the ones every result in README.md was produced with.
-psutil==7.1.3        # memory/CPU/battery checks (preflight, bench, Sprout)
-numpy==2.3.4         # Sprout Library search vectors
+psutil==7.1.3        # memory/CPU/battery checks (preflight, bench, Sia)
+numpy==2.3.4         # Sia Library search vectors
 pandas==2.3.3        # MMLU-Pro sampling (tools/task_eval.py)
 pyarrow==22.0.0      # reading the MMLU-Pro parquet file
-pypdf==6.21.1        # PDF text (Sprout Read mode and file tool)
+pypdf==6.21.1        # PDF text (Sia Read mode and file tool)
 pillow==12.0.0       # screen snips / clipboard images, icons
 jinja2==3.1.6        # rendering GGUF chat templates (tools/chat_corpus.py)
-pywebview==6.2.1     # Sprout's standalone window (WebView2; pulls in pythonnet). Without it, Sprout uses an Edge app window
-pydantic-monty==1.3.0 # Sprout's run_python sandbox (Monty: a locked-down Python interpreter in Rust)
-sherpa-onnx==1.13.8   # Sprout's voice mode: Silero VAD, Parakeet speech recognition, Kokoro voice (CPU)
+pywebview==6.2.1     # Sia's standalone window (WebView2; pulls in pythonnet). Without it, Sia uses an Edge app window
+pydantic-monty==1.3.0 # Sia's run_python sandbox (Monty: a locked-down Python interpreter in Rust)
+sherpa-onnx==1.13.8   # Sia's voice mode: Silero VAD, Parakeet speech recognition, Kokoro voice (CPU)
+# Pronunciation by meaning ("live location" vs "I live here"): misaki, Kokoro's own G2P, with spaCy part-of-speech
+# tags. Without these, voice mode falls back to sherpa-onnx's espeak front end (17/32 heteronyms right instead of 29/32).
+misaki==0.9.4
+spacy==3.8.7
+thinc==8.3.11
+preshed==3.0.13      # the 2026-10-24 releases of preshed, murmurhash and cymem broke spaCy on Windows (OverflowError)
+murmurhash==1.0.15
+cymem==2.0.13
+num2words==0.5.14
+phonemizer-fork==3.3.2
+espeakng-loader==0.2.4
+onnxruntime==1.30.0
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
 
 # Optional: only for tools/bandwidth.py and tools/check_sysmem_fallback.py (GPU memory tests)
 # torch==2.9.1  (CUDA build from https://pytorch.org)

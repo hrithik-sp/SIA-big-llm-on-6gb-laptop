@@ -1,15 +1,15 @@
-"""Sprout as an MCP host: tools from Model Context Protocol servers (https://modelcontextprotocol.io).
+"""Sia as an MCP host: tools from Model Context Protocol servers (https://modelcontextprotocol.io).
 
 MCP is the common plug-in format for AI tools, so existing servers (Windows-MCP for operating apps,
-the reference Memory server, and many more) work in Sprout without new code. Servers are declared in
+the reference Memory server, and many more) work in Sia without new code. Servers are declared in
 app/mcp.json. Like llama.cpp's own MCP support (tools/server/README.md, "MCP servers"), only the
 stdio transport is used: each server is a child process exchanging one JSON-RPC message per line.
 
-Sprout keeps control of every call. A tool reaches the model only if mcp.json lists it, and its rule
+Sia keeps control of every call. A tool reaches the model only if mcp.json lists it, and its rule
 there sets:
   policy   "auto" (no card: reads nothing private), "read" (card; may be always-allowed),
            "action" (card; may be always-allowed), "ask" (card every time, never always-allowed);
-  fixed    arguments Sprout sets itself (hidden from the model);
+  fixed    arguments Sia sets itself (hidden from the model);
   allowed  the only values an argument may take (e.g. App modes without launch_executable);
   blocked  values refused before any card (e.g. the Win+R shortcut);
   label    the approval card's text, a template over the arguments ({target} names a UI element).
@@ -53,7 +53,7 @@ class Server:
             self.on_spawn(self.proc)
         threading.Thread(target=self._reader, args=(self.proc,), daemon=True).start()
         self._request("initialize", {"protocolVersion": PROTOCOL, "capabilities": {},
-                                     "clientInfo": {"name": "sprout", "version": "1.2"}}, started=True)
+                                     "clientInfo": {"name": "sia", "version": "1.2"}}, started=True)
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
     def _send(self, msg):
@@ -71,12 +71,12 @@ class Server:
                 if slot:
                     slot["msg"] = msg
                     slot["event"].set()
-            elif "id" in msg and "method" in msg:  # a request from the server: ping, or features Sprout lacks
+            elif "id" in msg and "method" in msg:  # a request from the server: ping, or features Sia lacks
                 reply = {"jsonrpc": "2.0", "id": msg["id"]}
                 if msg["method"] == "ping":
                     reply["result"] = {}
                 else:
-                    reply["error"] = {"code": -32601, "message": "not supported by Sprout"}
+                    reply["error"] = {"code": -32601, "message": "not supported by Sia"}
                 try:
                     self._send(reply)
                 except OSError:
@@ -170,7 +170,7 @@ class Host:
                 continue
             try:
                 offered[name] = srv.list_tools()
-            except Exception as e:  # a missing or broken plug-in must not stop Sprout
+            except Exception as e:  # a missing or broken plug-in must not stop Sia
                 self.errors[name] = f"{type(e).__name__}: {e}"
             finally:
                 if srv.spec.get("stop_after_listing", True):
@@ -190,7 +190,7 @@ class Host:
                     continue  # not listed in mcp.json: never shown to the model, never callable
                 schema = json.loads(json.dumps(t.get("inputSchema") or {"type": "object", "properties": {}}))
                 props = schema.setdefault("properties", {})
-                for k in list(rule.get("fixed", {})) + rule.get("hide", []):  # set by Sprout, not by the model
+                for k in list(rule.get("fixed", {})) + rule.get("hide", []):  # set by Sia, not by the model
                     props.pop(k, None)
                 for k, values in rule.get("allowed", {}).items():
                     if k in props:
@@ -206,21 +206,21 @@ class Host:
         return self.tools
 
     def check(self, full_name, args):
-        """An error if Sprout refuses these arguments (before any approval card is shown), else None."""
+        """An error if Sia refuses these arguments (before any approval card is shown), else None."""
         t = self.tools.get(full_name)
         if not t:
             return f"unknown or disallowed tool {full_name}"
         rule = t["rule"]
         for k, values in rule.get("allowed", {}).items():
             if k in args and args[k] is not None and str(args[k]) not in values:
-                return f"{k}={args[k]!r} isn't allowed in Sprout (allowed: {', '.join(values)})"
+                return f"{k}={args[k]!r} isn't allowed in Sia (allowed: {', '.join(values)})"
         for k, values in rule.get("blocked", {}).items():
             v = str(args.get(k, "")).lower().replace(" ", "")
             if v and v in values:
-                return f"{k}={args[k]!r} is blocked in Sprout for safety"
+                return f"{k}={args[k]!r} is blocked in Sia for safety"
         for k, pattern in rule.get("blocked_regex", {}).items():
             if args.get(k) is not None and re.search(pattern, str(args[k]), re.I):
-                return f"{k}={args[k]!r} is blocked in Sprout for safety"
+                return f"{k}={args[k]!r} is blocked in Sia for safety"
         return None
 
     def element(self, label):

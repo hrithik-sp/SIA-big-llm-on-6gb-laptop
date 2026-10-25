@@ -1,4 +1,4 @@
-"""Sprout: backend for the one-click offline AI assistant.
+"""Sia: backend for the one-click offline AI assistant.
 
 Runs one llama-server for the chat model (swapping task presets itself, one model at a
 time) and a small CPU embedding server on demand, then serves the web UI and a same-origin
@@ -7,13 +7,13 @@ the browser can't use them (llama-server's CORS allows every origin). Router mod
 used: it starts its per-model children without the key (server-models.cpp,
 unset_reserved_args), on a free localhost port.
 
-  python app/server.py               # open Sprout (or bring the running one forward)
+  python app/server.py               # open Sia (or bring the running one forward)
   python app/server.py --background  # start quietly at login: no window, no model loaded
 
-Sprout stays resident: closing the window hides it; the model unloads itself after 10 idle
+Sia stays resident: closing the window hides it; the model unloads itself after 10 idle
 minutes and wakes when the window opens. Ctrl+Alt+Space summons it; Quit stops it.
 
-Design notes and measurements: docs/SPROUT.md and docs/LAB_NOTEBOOK.md ("Sprout").
+Design notes and measurements: docs/SIA.md and docs/LAB_NOTEBOOK.md ("Sia").
 """
 import argparse
 import base64
@@ -332,7 +332,7 @@ def llama(method, port, path, body=None, timeout=600):
     return r.status, (json.loads(data) if data else None)
 
 
-def message_box(text, title="Sprout"):
+def message_box(text, title="Sia"):
     """Visible error when running without a console (pythonw)."""
     if os.name == "nt":
         ctypes.windll.user32.MessageBoxW(None, text, title, 0x10)
@@ -340,22 +340,22 @@ def message_box(text, title="Sprout"):
         print(text, file=sys.stderr)
 
 
-WINDOW = {"w": None, "visible": False}  # the native Sprout window (pywebview), when available
+WINDOW = {"w": None, "visible": False}  # the native Sia window (pywebview), when available
 
 
 def run_native_window(url, hidden):
-    """Sprout's own window (WebView2 via pywebview), separate from Edge. Runs on the main
+    """Sia's own window (WebView2 via pywebview), separate from Edge. Runs on the main
     thread until Quit. Closing only hides it; Ctrl+Alt+Space or the icon shows it instantly."""
     import webview
     if os.name == "nt":  # own taskbar identity and icon, not grouped under Python
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Sprout.LocalAI")
-    w = webview.create_window("Sprout", url, width=1280, height=860, min_size=(720, 520), hidden=hidden,
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Sia.LocalAI")
+    w = webview.create_window("Sia", url, width=1280, height=860, min_size=(720, 520), hidden=hidden,
                               background_color="#0a0b0f", text_select=True)
 
     def on_closing():
         WINDOW["visible"] = False
         threading.Thread(target=w.hide, daemon=True).start()
-        return False  # cancel the close: Sprout stays resident (Quit in the app stops it)
+        return False  # cancel the close: Sia stays resident (Quit in the app stops it)
     w.events.closing += on_closing
     WINDOW["w"], WINDOW["visible"] = w, not hidden
     _guard_webview()
@@ -363,10 +363,10 @@ def run_native_window(url, hidden):
 
 
 def log_line(text):
-    """One timestamped line in app-data/logs/sprout.log (Sprout runs without a console)."""
+    """One timestamped line in app-data/logs/sia.log (Sia runs without a console)."""
     try:
         DATA.joinpath("logs").mkdir(parents=True, exist_ok=True)
-        with open(DATA / "logs" / "sprout.log", "a", encoding="utf-8") as f:
+        with open(DATA / "logs" / "sia.log", "a", encoding="utf-8") as f:
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {text}\n")
     except OSError:
         pass
@@ -376,7 +376,7 @@ def _guard_webview():
     """Recover when WebView2's processes die (the owner once ended "WebView2 Manager" in Task Manager and the
     window went blank; pywebview doesn't handle WebView2's ProcessFailed event). Per Microsoft's WebView2
     docs, a crashed page renderer is fixed by reloading; once the browser process itself has exited the
-    control can't be reused, so Sprout relaunches itself and comes back on its own."""
+    control can't be reused, so Sia relaunches itself and comes back on its own."""
     try:
         from webview.platforms import edgechromium
     except ImportError:
@@ -403,7 +403,7 @@ def _webview_failed(chrome, event):
 
 
 def relaunch():
-    """Start a fresh Sprout that waits for this one to exit, then exit (children go with the job object)."""
+    """Start a fresh Sia that waits for this one to exit, then exit (children go with the job object)."""
     exe = Path(sys.executable)
     exe = exe.with_name("pythonw.exe") if exe.with_name("pythonw.exe").exists() else exe
     args = [str(exe), str(APP / "server.py"), "--after-pid", str(os.getpid())]
@@ -414,7 +414,7 @@ def relaunch():
 
 
 def open_window(url):
-    """Show Sprout: the native window if running, else an Edge app window (fallback)."""
+    """Show Sia: the native window if running, else an Edge app window (fallback)."""
     if WINDOW["w"] is not None:
         WINDOW["visible"] = True
         WINDOW["w"].show()
@@ -429,7 +429,7 @@ def open_window(url):
 
 
 def raise_window():
-    """Bring a visible 'Sprout' window to the front; True if one was found."""
+    """Bring a visible 'Sia' window to the front; True if one was found."""
     if os.name != "nt":
         return False
     u32, found = ctypes.windll.user32, []
@@ -440,7 +440,7 @@ def raise_window():
         if n and u32.IsWindowVisible(hwnd):
             buf = ctypes.create_unicode_buffer(n + 1)
             u32.GetWindowTextW(hwnd, buf, n + 1)
-            if buf.value == "Sprout":
+            if buf.value == "Sia":
                 found.append(hwnd)
         return True
     u32.EnumWindows(cb, 0)
@@ -452,7 +452,7 @@ def raise_window():
 
 
 def focus_window():
-    """Bring the Sprout window to the front (or open one). Used by the hotkey and --open-file."""
+    """Bring the Sia window to the front (or open one). Used by the hotkey and --open-file."""
     if WINDOW["w"] is not None:
         WINDOW["visible"] = True
         WINDOW["w"].show()
@@ -466,7 +466,7 @@ def focus_window():
             if n and u32.IsWindowVisible(hwnd):
                 buf = ctypes.create_unicode_buffer(n + 1)
                 u32.GetWindowTextW(hwnd, buf, n + 1)
-                if buf.value == "Sprout" or buf.value.startswith("Sprout -"):
+                if buf.value == "Sia" or buf.value.startswith("Sia -"):
                     found.append(hwnd)
             return True
         u32.EnumWindows(cb, 0)
@@ -478,10 +478,10 @@ def focus_window():
 
 
 def hotkey_loop():
-    """Global hotkey Ctrl+Alt+Space summons Sprout from anywhere (RegisterHotKey on this thread)."""
+    """Global hotkey Ctrl+Alt+Space summons Sia from anywhere (RegisterHotKey on this thread)."""
     u32 = ctypes.windll.user32
     if not u32.RegisterHotKey(None, 1, 0x0001 | 0x0002 | 0x4000, 0x20):  # ALT | CONTROL | NOREPEAT, VK_SPACE
-        print("hotkey Ctrl+Alt+Space is taken by another app; Sprout runs without it")
+        print("hotkey Ctrl+Alt+Space is taken by another app; Sia runs without it")
         return
     msg = wintypes.MSG()
     while u32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
@@ -530,7 +530,7 @@ def snip(timeout=90):
 
 
 def inbox_add(path):
-    """Register a local file handed to Sprout (Explorer menu, copied files); only these can be served."""
+    """Register a local file handed to Sia (Explorer menu, copied files); only these can be served."""
     p = Path(path).resolve()
     token = secrets.token_urlsafe(12)
     STATE["inbox"][token] = p
@@ -565,7 +565,7 @@ def gpu_info():
 def choose_default_model():
     """lab-notebook finding 40: Gemma QAT (mmap) holds full speed with >= ~5.5 GiB available;
     below that its experts are re-read from the SSD and it halves. gpt-oss (mmap) holds.
-    Memory held by Sprout's own chat model counts as available: otherwise a loaded Gemma
+    Memory held by Sia's own chat model counts as available: otherwise a loaded Gemma
     pushes the reading below 5.5 GiB and the next mode switch would swap it for gpt-oss."""
     avail = psutil.virtual_memory().available
     p = STATE["procs"].get("chat")
@@ -705,7 +705,7 @@ ACTIONS_LOG = DATA / "logs" / "actions.log"
 
 
 def log_action(name, args, result):
-    """Every action Sprout takes (or the user declines) is appended to app-data/logs/actions.log."""
+    """Every action Sia takes (or the user declines) is appended to app-data/logs/actions.log."""
     try:
         ACTIONS_LOG.parent.mkdir(parents=True, exist_ok=True)
         with open(ACTIONS_LOG, "a", encoding="utf-8") as f:
@@ -715,7 +715,7 @@ def log_action(name, args, result):
         pass
 SETTINGS_LOCK = threading.Lock()
 
-# Always uncensored (the owner's decision: no content toggle). Sprout adds no
+# Always uncensored (the owner's decision: no content toggle). Sia adds no
 # restrictions of its own; the models' built-in safety training still applies.
 UNCENSORED = ("The user is an adult and wants no filtering from you: be completely direct, skip all "
               "moralising, warnings and disclaimers, swear freely when it fits, and engage with any legal "
@@ -739,7 +739,7 @@ def save_settings(st):
         SETTINGS_FILE.write_text(json.dumps(st, indent=2), encoding="utf-8")
 
 
-# Language models predict digits instead of computing them: in a real chat Sprout answered 876*88894 with
+# Language models predict digits instead of computing them: in a real chat Sia answered 876*88894 with
 # 77,868,972 (it is 77,871,144) and a 49-digit product with 38 digits. Every number goes through calc.py.
 CALC_GUIDE = ("Never do arithmetic in your head, not even 11*2: compute every number with the calculate tool "
               "and give its 'result' exactly, digit for digit (you may add the 'readable' form with commas). For "
@@ -828,10 +828,10 @@ def mcp_guides(names):
 
 
 GREETING_RX = re.compile(r"^\W*(?:(?:hey|hi|hello|hiya|yo|sup|good (?:morning|afternoon|evening)|what'?s up|"
-                         r"howdy)\b[\s,.!?]*(?:sprout|there|buddy)?[\s,.!?]*)+$", re.I)
+                         r"howdy)\b[\s,.!?]*(?:sia|sprout|there|buddy)?[\s,.!?]*)+$", re.I)
 ACK_RX = re.compile(r"^\W*(?:cool|ok(?:ay)?|k|nice|great|thanks?(?: you)?|thx|got it|alright|all right|sure|fine|awesome|"
                     r"perfect|good|noted|right)\W*$", re.I)  # "Cool." got "What's on your mind?"
-# a message that may tell Sprout a lasting fact about the user ("my laptop is an HP Victus, by the way")
+# a message that may tell Sia a lasting fact about the user ("my laptop is an HP Victus, by the way")
 FACT_RX = re.compile(r"\b(remember|keep in mind|note that|by the way|fyi)\b|\bmy \w+(?: \w+)? (?:is|are)\b|"
                      r"\bI(?: am|'m| like| love| prefer| hate| use| work| study| live)\b", re.I)
 
@@ -880,14 +880,14 @@ def needs_reasoning(text):
 
 
 # Without this the model fell back to its training ("I was made by Google") when asked who created it.
-# Sprout itself was designed and built by its owner; only the base model was trained by Google DeepMind.
-IDENTITY = ("About you: you are Sprout, a personal AI assistant created by {creator}. {creator} designed and built "
+# Sia itself was designed and built by its owner; only the base model was trained by Google DeepMind.
+IDENTITY = ("About you: you are Sia, a personal AI assistant created by {creator}. {creator} designed and built "
             "you, and you run entirely on {first}'s laptop ({laptop}): nothing leaves it and you have no internet. "
             "{creator} is your creator, your owner and your boss. When asked who made, created, built, owns or "
             "trained you, or who you work for, the answer is {creator}; never say Google made, created or owns "
             "you. Only if asked specifically which language model is inside you or who trained that model: it is "
             "{model}, an open-weights model whose base Google DeepMind trained, which {first} chose and built "
-            "Sprout around, running with llama.cpp.")
+            "Sia around, running with llama.cpp.")
 HONESTY = ("Memory and honesty: what the user told you earlier in this conversation is known; use it directly. "
            "You can only do things with your tools, inside the reply you are writing: never promise to do "
            "something later or in the background, and never say you checked, searched, found, opened or changed "
@@ -937,13 +937,13 @@ def fit_history(body, budget=None):
 GAME_GUIDE = ("For Wordle or Hangman, always use the word_game tool: it picks and keeps the secret word and "
               "scores every guess; tell the user its summary and never make up a word or feedback yourself. "
               + CALC_GUIDE + " "
-              "Laptop access is switched off in Sprout's Settings, so you can't look anything up on the laptop; if "
+              "Laptop access is switched off in Sia's Settings, so you can't look anything up on the laptop; if "
               "they ask about the laptop, say so and that they can turn it on in Settings.")
 # A command to act ("turn bluetooth off", "ok now set the volume to 40", "close notepad"): the reply must
 # go through a tool. The model once answered "Bluetooth is now off" without calling anything, echoing its
 # previous reply. Questions ("how do I turn off bluetooth?") don't match: the command must lead.
 ACTION_RX = re.compile(
-    r"^\W*(?:(?:please|pls|plz|ok|okay|now|hey|sprout|then|and|also|actually|again|can you|could you|would you|"
+    r"^\W*(?:(?:please|pls|plz|ok|okay|now|hey|sia|sprout|then|and|also|actually|again|can you|could you|would you|"
     r"will you)\W+)*(?:turn|switch|set|put|open|launch|close|quit|exit|mute|unmute|lower|raise|increase|"
     r"decrease|reduce|dim|brighten|lock|restart|reboot|shut ?down|take an? screenshot|take a screen ?shot|"
     r"screenshot|copy|save (?:this|it|that|these|as)|remind|play|pause|resume|skip|minimi[sz]e|maximi[sz]e|"
@@ -1001,7 +1001,7 @@ def build_request(req):
             system += "\n\nNo matching excerpts were found in the user's files. Say so; don't invent sources."
     settings = load_settings()
     name = settings["user_name"].strip()
-    if name:  # the owner (user's request): Sprout works for them
+    if name:  # the owner (user's request): Sia works for them
         first = name.split()[0]
         sub, pos = PRONOUNS.get(settings["pronouns"], ("they", "their"))  # set in Settings; never guessed from the name
         system += (f"\n\nAbout the user: {name} ({first}) owns this laptop and is your boss; you are {first}'s "
@@ -1038,7 +1038,7 @@ def build_request(req):
         game = tools.games.state_line()
         # the honesty rule again, where the model weighs it most: next to the newest message
         # This line once said "for anything they haven't told you: look with a tool or say you don't know", and
-        # Sprout refused Abdul Kalam, Aryabhata and "who invented zero". It covers facts about the user and the
+        # Sia refused Abdul Kalam, Aryabhata and "who invented zero". It covers facts about the user and the
         # laptop only; general knowledge is answered from training.
         rule = (" Use what the user told you earlier in this conversation directly. Facts about the user or this "
                 "laptop that you weren't told: look with a tool or say you don't know. General knowledge (famous "
@@ -1063,7 +1063,7 @@ def build_request(req):
                  " Just an acknowledgement: reply in a few words or less (\"Sure.\", \"Anytime.\"), with no question"
                  + (", and it is not a game move: call no tool (\"ok\" during Wordle once became a made-up guess)."
                     if game else ".") if ACK_RX.match(last_text) else "")
-        stamp = (f"[Sprout note, not written by the user; never mention it: {tools.now_context()}"
+        stamp = (f"[Sia note, not written by the user; never mention it: {tools.now_context()}"
                  f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{greet}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):
@@ -1155,7 +1155,7 @@ def chat_file(cid):
 # --------------------------------------------------------------------------- HTTP
 class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "Sprout/1.0"
+    server_version = "Sia/1.0"
 
     def log_message(self, fmt, *args):  # quiet console
         pass
@@ -1331,7 +1331,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"image": snip()})
             if path == "/api/clipboard":
                 return self._json(clipboard_item() or {})
-            if path == "/api/inbox/add":  # from server.py --open-file (Explorer "Ask Sprout")
+            if path == "/api/inbox/add":  # from server.py --open-file (Explorer "Ask Sia")
                 item = inbox_add(json.loads(self._body())["path"])
                 STATE["inbox_new"].append(item)
                 threading.Thread(target=focus_window, daemon=True).start()
@@ -1362,7 +1362,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         """Voice mode (voice.py): start/stop the models, microphone audio in, events out, speech back."""
         if what == "start":
             if not voice.available():
-                return self._json({"error": "The voice models aren't installed (see docs/SPROUT.md, Voice)."}, 404)
+                return self._json({"error": "The voice models aren't installed (see docs/SIA.md, Voice)."}, 404)
             voice.load(load_settings()["voice_name"])
             old, STATE["listener"] = STATE.get("listener"), voice.Listener(load_settings()["voice_listen"])
             if old:
@@ -1384,7 +1384,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(wav)
             return None
-        if what == "awake":  # the follow-up window after Sprout answers (0 closes it)
+        if what == "awake":  # the follow-up window after Sia answers (0 closes it)
             if STATE.get("listener"):
                 STATE["listener"].awake(float(json.loads(self._body() or b"{}").get("seconds", voice.FOLLOW_UP_S)))
             return self._json({"ok": True})
@@ -1497,7 +1497,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _round += 1
                     body["tool_choice"] = "required"
                     body["messages"] += [{"role": "assistant", "content": content}, {"role": "user", "content": (
-                        "[Sprout note, not written by the user: you said you noted it, but nothing was saved. Save "
+                        "[Sia note, not written by the user: you said you noted it, but nothing was saved. Save "
                         "it now with memory_create_entities or memory_add_observations, then confirm in a few "
                         "words.]")}]
                     emit({"choices": [{"index": 0, "delta": {"content": "\n\n"}}]})
@@ -1507,7 +1507,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         # it reasoned but never answered (gpt-oss at high effort after several tool rounds once
                         # ended empty after 150 s): ask once more, briefly, with light reasoning
                         nudge = dict(body, messages=body["messages"] + [{"role": "user", "content": (
-                            "[Sprout note, not written by the user: give your final answer now, briefly, "
+                            "[Sia note, not written by the user: give your final answer now, briefly, "
                             "from the tool results above.]")}])
                         nudge.pop("tools", None)
                         nudge.pop("tool_choice", None)
@@ -1601,11 +1601,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return result
         if not st["laptop_access"]:
             emit({"type": "tool", "label": label, "status": "off"})
-            return {"error": "The user has turned laptop access off in Sprout's settings."}
+            return {"error": "The user has turned laptop access off in Sia's settings."}
         is_action = bool(t.get("action"))
         if is_action and not st["laptop_actions"]:
             emit({"type": "tool", "label": label, "status": "actions_off"})
-            return {"error": "The user has turned actions off in Sprout's settings (Let Sprout act on this laptop)."}
+            return {"error": "The user has turned actions off in Sia's settings (Let Sia act on this laptop)."}
         nothing = tools.nothing_to_do(name, args)  # e.g. cancel a timer that isn't there: no card to approve
         if nothing:
             emit({"type": "tool", "label": label, "status": "error"})
@@ -1664,9 +1664,9 @@ def main(argv=None):
     ap.add_argument("--background", action="store_true", help="start quietly: no window, no model until summoned")
     ap.add_argument("--quit-on-close", action="store_true", help="stop when the window closes (not resident)")
     ap.add_argument("--no-autoquit", action="store_true", help=argparse.SUPPRESS)  # old flag, now the default
-    ap.add_argument("--open-file", help="attach this file in Sprout (used by the Explorer 'Ask Sprout' menu)")
+    ap.add_argument("--open-file", help="attach this file in Sia (used by the Explorer 'Ask Sia' menu)")
     ap.add_argument("--model", choices=list(PRESETS), help="model to load at startup (default: by free RAM)")
-    ap.add_argument("--after-pid", type=int, help=argparse.SUPPRESS)  # relaunch: wait for the old Sprout to exit
+    ap.add_argument("--after-pid", type=int, help=argparse.SUPPRESS)  # relaunch: wait for the old Sia to exit
     a = ap.parse_args(argv)
     if a.after_pid:
         try:
@@ -1676,11 +1676,11 @@ def main(argv=None):
         log_line("relaunched after the window's WebView2 process failed")
     missing = [str(p) for k, p in FILES.items() if k != "embed" and not p.exists()]
     if missing:
-        message_box("Sprout can't start: model files are missing:\n\n" + "\n".join(missing))
+        message_box("Sia can't start: model files are missing:\n\n" + "\n".join(missing))
         return 1
     default, avail = choose_default_model()
     STATE["default_model"] = a.model or default
-    STATE["test"] = a.no_browser  # test harnesses run Sprout this way
+    STATE["test"] = a.no_browser  # test harnesses run Sia this way
     print(f"Free RAM {avail:.1f} GiB -> starting {MODEL_INFO[STATE['default_model']]['name']}")
     try:
         srv = Server(("127.0.0.1", APP_PORT), Handler)
@@ -1688,7 +1688,7 @@ def main(argv=None):
         if a.background:
             return 0
         # Windows only lets the process the user just launched take the foreground, so this
-        # process allows it for the running Sprout and then raises the window itself.
+        # process allows it for the running Sia and then raises the window itself.
         if os.name == "nt":
             ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
         path, body = ("/api/inbox/add", json.dumps({"path": a.open_file})) if a.open_file else ("/api/show", "{}")
@@ -1697,7 +1697,7 @@ def main(argv=None):
             c.request("POST", path, body, {"Origin": f"http://127.0.0.1:{APP_PORT}",
                                            "Content-Type": "application/json"})
             if (json.loads(c.getresponse().read() or b"{}") or {}).get("test"):
-                message_box("Sprout is running a self-test right now, so it would be slow. "
+                message_box("Sia is running a self-test right now, so it would be slow. "
                             "Open it again in a few minutes.")
                 return 0
         except (OSError, ValueError):
@@ -1710,7 +1710,7 @@ def main(argv=None):
     if a.open_file and os.path.isfile(a.open_file):
         STATE["inbox_new"].append(inbox_add(a.open_file))
     url = f"http://127.0.0.1:{APP_PORT}/"
-    print(f"Sprout is running at {url}  (Ctrl+Alt+Space to summon; Quit in the app to stop)")
+    print(f"Sia is running at {url}  (Ctrl+Alt+Space to summon; Quit in the app to stop)")
     threading.Thread(target=init_mcp, daemon=True).start()  # first, so the warm-up sees the plug-in tools
     if not a.background:
         threading.Thread(target=preload, args=(STATE["default_model"],), daemon=True).start()
@@ -1722,7 +1722,7 @@ def main(argv=None):
     native = False
     if not a.no_browser:
         try:
-            import webview  # noqa: F401  (Sprout's own window; falls back to Edge app mode)
+            import webview  # noqa: F401  (Sia's own window; falls back to Edge app mode)
             native = True
         except ImportError:
             if not a.background:
@@ -1742,11 +1742,11 @@ def main(argv=None):
 if __name__ == "__main__":
     if sys.stdout is None:  # pythonw
         DATA.joinpath("logs").mkdir(parents=True, exist_ok=True)
-        sys.stdout = sys.stderr = open(DATA / "logs" / "sprout.log", "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = open(DATA / "logs" / "sia.log", "a", encoding="utf-8", buffering=1)
     try:
         sys.exit(main())
     except Exception:
         import traceback
         traceback.print_exc()
-        message_box("Sprout hit an error and stopped:\n\n" + traceback.format_exc()[-1500:])
+        message_box("Sia hit an error and stopped:\n\n" + traceback.format_exc()[-1500:])
         shutdown()

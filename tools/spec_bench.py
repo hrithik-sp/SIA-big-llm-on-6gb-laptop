@@ -54,7 +54,7 @@ def wait_ready(port, proc, timeout=900):
 
 SAMPLING = {
     "greedy": {"temperature": 0},
-    # Gemma 4 generation_config.json (Google): what the Sprout app uses
+    # Gemma 4 generation_config.json (Google): what the Sia app uses
     "gemma": {"temperature": 1.0, "top_k": 64, "top_p": 0.95},
 }
 

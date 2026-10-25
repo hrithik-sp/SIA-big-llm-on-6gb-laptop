@@ -14,19 +14,19 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
 
-# (repo, revision, file, role) for every model file used in the results or by Sprout
+# (repo, revision, file, role) for every model file used in the results or by Sia
 FILES = [
     ("ggml-org/gpt-oss-20b-GGUF", "15dcfc7e7c608c6161507211ed43c5b590801b4b", "gpt-oss-20b-MXFP4.gguf", "gpt-oss-20b, released MXFP4"),
     ("ggml-org/gpt-oss-20b-GGUF", "15dcfc7e7c608c6161507211ed43c5b590801b4b", "eagle3-gpt-oss-20b-Q8_0.gguf", "EAGLE-3 draft for gpt-oss (finding 35)"),
     ("google/gemma-4-26B-A4B-it-qat-q4_0-gguf", "d1c082be9cf3c8a514acf63b8761f4b41935842e", "gemma-4-26B_q4_0-it.gguf", "Gemma 4 26B-A4B QAT Q4_0 (Google)"),
-    ("google/gemma-4-26B-A4B-it-qat-q4_0-gguf", "d1c082be9cf3c8a514acf63b8761f4b41935842e", "gemma-4-26B-it-mmproj.gguf", "Gemma 4 vision projector (Sprout)"),
+    ("google/gemma-4-26B-A4B-it-qat-q4_0-gguf", "d1c082be9cf3c8a514acf63b8761f4b41935842e", "gemma-4-26B-it-mmproj.gguf", "Gemma 4 vision projector (Sia)"),
     ("unsloth/gemma-4-26B-A4B-it-qat-GGUF", "main", "mtp-gemma-4-26B-A4B-it.gguf", "QAT MTP head (speculative decoding)"),
     ("unsloth/gemma-4-26B-A4B-it-GGUF", "c099eb48e663fd284577b04978a94ffccb261841", "gemma-4-26B-A4B-it-Q8_0.gguf", "Gemma 4 Q8_0, quality reference"),
     ("unsloth/gemma-4-26B-A4B-it-GGUF", "c099eb48e663fd284577b04978a94ffccb261841", "mtp-gemma-4-26B-A4B-it.gguf", "MTP head for Q8_0"),
     ("unsloth/gemma-4-26B-A4B-it-GGUF", "c099eb48e663fd284577b04978a94ffccb261841", "gemma-4-26B-A4B-it-UD-IQ2_M.gguf", "lossy comparison"),
     ("unsloth/gemma-4-26B-A4B-it-GGUF", "c099eb48e663fd284577b04978a94ffccb261841", "gemma-4-26B-A4B-it-UD-IQ3_XXS.gguf", "lossy comparison"),
     ("unsloth/gemma-4-26B-A4B-it-GGUF", "c099eb48e663fd284577b04978a94ffccb261841", "gemma-4-26B-A4B-it-UD-Q3_K_M.gguf", "lossy comparison"),
-    ("ggml-org/embeddinggemma-2-GGUF", "58faf90940886df2d62be555c8765d00dac362c5", "embeddinggemma-2-Q8_0.gguf", "Sprout Library search"),
+    ("ggml-org/embeddinggemma-2-GGUF", "58faf90940886df2d62be555c8765d00dac362c5", "embeddinggemma-2-Q8_0.gguf", "Sia Library search"),
 ]
 
 

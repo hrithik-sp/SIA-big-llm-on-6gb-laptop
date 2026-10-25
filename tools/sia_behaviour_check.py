@@ -1,4 +1,4 @@
-"""Behaviour check for Sprout's Chat mode with the real model: speed, correctness and persona.
+"""Behaviour check for Sia's Chat mode with the real model: speed, correctness and persona.
 
 Scripted conversations based on a real chat, each scored automatically:
 - greetings: short, varied, the owner's name used rarely, no filler laughter;
@@ -9,8 +9,8 @@ Scripted conversations based on a real chat, each scored automatically:
 - a scheduling question with one right answer;
 - reply speed: time to the first word on turns that use no tool.
 
-  python tools/sprout_behaviour_check.py [--show]     (--show prints every reply)
-Starts Sprout without a window on temporary settings (the user's own are untouched), then quits it.
+  python tools/sia_behaviour_check.py [--show]     (--show prints every reply)
+Starts Sia without a window on temporary settings (the user's own are untouched), then quits it.
 """
 import datetime as dt
 import http.client
@@ -83,7 +83,8 @@ def scenarios():
     def boss(rs):
         a = rs[0]["answer"].lower()
         casual = re.findall(r"friend|hanging out|buddy|\bbro\b|privilege", a)
-        return ("boss" in a or "work for" in a) and not casual, f"boss: {'boss' in a}, off-tone words {casual}"
+        boss = re.search(r"boss|creator|created me|made me|owner|work for", a)  # the owner: "boss, creator, everything"
+        return bool(boss) and not casual, f"boss: {boss and boss.group(0)}, off-tone words {casual}"
 
     def clock(rs):
         now = dt.datetime.now()
@@ -163,10 +164,10 @@ def main():
     code = ("import sys, pathlib; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
             f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
-    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    import socket  # never test against the owner's running Sia: it would get the questions and the actions
     with socket.socket() as s:
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=dict(os.environ))
     for _ in range(120):
         try:

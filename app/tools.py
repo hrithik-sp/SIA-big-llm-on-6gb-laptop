@@ -1,8 +1,8 @@
-"""Laptop tools Sprout's model may call, with the user's permission.
+"""Laptop tools Sia's model may call, with the user's permission.
 
 Security model:
 - Every tool is read-only: nothing here changes a setting or writes, deletes, moves, runs or
-  sends anything, and Sprout itself never reaches the network. Two notes: the battery report
+  sends anything, and Sia itself never reaches the network. Two notes: the battery report
   is written by Windows to a temp file that is deleted at once, and Windows' own location
   service (when location is on) may use its network lookup to find the position.
 - No shell is exposed to the model; each tool is a fixed Python function, and unexpected
@@ -77,7 +77,7 @@ def safe_path(path, want="any"):
     if not re.match(r"^[A-Za-z]:\\", s) or ":" in s[2:]:
         raise PermissionError("only local drive paths are allowed")
     if any(rx.search(s) for rx in BLOCKED_DIRS) or any(rx.search(p.name) for rx in BLOCKED_NAMES):
-        raise PermissionError("this location can hold passwords, keys or other secrets, so Sprout won't read it")
+        raise PermissionError("this location can hold passwords, keys or other secrets, so Sia won't read it")
     if want == "dir" and not p.is_dir():
         raise FileNotFoundError(f"no such folder: {s}")
     if want == "file" and not p.is_file():
@@ -124,13 +124,13 @@ def _gpu():
 
 
 # --------------------------------------------------------------------------- tools
-SPROUT = "Sprout (this assistant and its AI model)"
+SIA = "Sia (this assistant and its AI model)"
 
 
 def system_vitals():
     vm, batt = psutil.virtual_memory(), psutil.sensors_battery()
     disk = psutil.disk_usage("C:\\")
-    try:  # Sprout itself (this backend, its window and its model servers): grouped, not called a hog
+    try:  # Sia itself (this backend, its window and its model servers): grouped, not called a hog
         me = psutil.Process(os.getpid())
         own = {me.pid} | {c.pid for c in me.children(recursive=True)}
     except psutil.Error:
@@ -138,7 +138,7 @@ def system_vitals():
     procs = []
     for p in psutil.process_iter(["name", "memory_info"]):
         try:
-            name = SPROUT if p.pid in own else p.info["name"]
+            name = SIA if p.pid in own else p.info["name"]
             procs.append((p.info["memory_info"].rss, name))
         except (psutil.Error, AttributeError):
             continue
@@ -156,7 +156,7 @@ def system_vitals():
         "disk_c": {"free_gb": round(disk.free / GiB, 1), "total_gb": round(disk.total / GiB, 1)},
         "uptime_hours": round((time.time() - psutil.boot_time()) / 3600, 1),
         "top_apps_by_memory": [{"app": n, "gb": round(b / GiB, 2)} for n, b in top],
-        "note": f"'{SPROUT}' is this assistant and its model: expected, so don't suggest closing it; "
+        "note": f"'{SIA}' is this assistant and its model: expected, so don't suggest closing it; "
                 "mapped model files count partly as cache that Windows frees when other apps need it.",
     }
 
@@ -278,7 +278,7 @@ def read_file(path, max_chars=16000):
     max_chars = max(500, min(int(max_chars), 20000))
     size = p.stat().st_size
     if size > MAX_READ_BYTES:
-        return {"error": f"file is {size / 2 ** 20:.0f} MB; Sprout reads files up to 50 MB"}
+        return {"error": f"file is {size / 2 ** 20:.0f} MB; Sia reads files up to 50 MB"}
     ext = p.suffix.lower()
     if ext == ".pdf":
         from pypdf import PdfReader
@@ -291,7 +291,7 @@ def read_file(path, max_chars=16000):
     else:
         raw = p.read_bytes()[: max_chars * 4 + 4096]
         if b"\x00" in raw[:8192]:
-            return {"error": f"{p.name} is a binary file ({ext or 'no extension'}); Sprout only reads text, PDF and Word files"}
+            return {"error": f"{p.name} is a binary file ({ext or 'no extension'}); Sia only reads text, PDF and Word files"}
         text = raw.decode("utf-8", errors="replace")
     return {"file": str(p), "size_kb": round(size / 1024, 1), "truncated": len(text) > max_chars,
             "text": text[:max_chars]}
@@ -793,7 +793,7 @@ TOOLS = {
     },
     "word_game": {
         "fn": games.word_game, "label": "Word game", "auto": True,  # reads nothing from the laptop: no permission card
-        "reads": "nothing from the laptop (Sprout's own game engine)",
+        "reads": "nothing from the laptop (Sia's own game engine)",
         "schema": {"type": "object", "properties": {
             "action": {"type": "string", "enum": ["start", "guess", "hint", "reveal"],
                        "description": "start: begin a game (a running one continues unless new=true); guess: score "
@@ -809,7 +809,7 @@ TOOLS = {
     },
     "calculate": {
         "fn": calc.calculate, "label": "Calculate", "auto": True,  # reads nothing from the laptop: no card
-        "reads": "nothing from the laptop (Sprout's exact calculator)",
+        "reads": "nothing from the laptop (Sia's exact calculator)",
         "schema": {"type": "object", "properties": {
             "expression": {"type": "string", "description":
                 "e.g. 876*88894, (1+0.05/12)**120, 15% * 2400, sqrt(2), 25!. Several steps separated by ; with "
@@ -896,11 +896,11 @@ TOOLS = {
     },
     "save_note": {
         "fn": actions.save_note, "label": "Save a note", "action": True,
-        "does": "saves text as a new file in Documents\\Sprout (never overwrites a file)",
+        "does": "saves text as a new file in Documents\\Sia (never overwrites a file)",
         "schema": {"type": "object", "properties": {
             "name": {"type": "string", "description": "file name, e.g. shopping list.txt (.txt, .md, .csv or .json)"},
             "text": {"type": "string"}}, "required": ["name", "text"]},
-        "description": "Save text (a note, a draft, a list) as a new file in Documents\\Sprout.",
+        "description": "Save text (a note, a draft, a list) as a new file in Documents\\Sia.",
     },
     "reminder": {
         "fn": actions.reminder, "label": "Reminder", "action": True,
@@ -920,12 +920,12 @@ TOOLS = {
     },
     "undo": {
         "fn": actions.undo, "label": "Undo", "action": True,
-        "does": "puts back something Sprout did earlier in this session (a setting's old value, closes what it "
+        "does": "puts back something Sia did earlier in this session (a setting's old value, closes what it "
                 "opened, cancels a timer or shutdown, restores the clipboard)",
         "schema": {"type": "object", "properties": {
             "what": {"type": "string", "description": "'last' for the most recent action, or words naming it "
                                                       "(e.g. volume, bluetooth, theme, spotify, timer, shutdown)"}}},
-        "description": "Undo or cancel something Sprout did earlier: put a setting back, close an app or file it "
+        "description": "Undo or cancel something Sia did earlier: put a setting back, close an app or file it "
                        "opened, cancel a timer/reminder or a restart/shutdown, restore the clipboard.",
     },
     "clipboard_text": {
@@ -1014,12 +1014,12 @@ def forget_label(what):
 
 
 def register_forget():
-    """Sprout's own 'forget' on top of the Memory plug-in: the user names what to forget in plain words and the
+    """Sia's own 'forget' on top of the Memory plug-in: the user names what to forget in plain words and the
     card lists exactly which stored facts match (the model once guessed a fact's wording, nothing matched, and
     it still said it had forgotten)."""
     TOOLS["forget"] = {
         "fn": forget, "label": "Forget", "action": True, "requires": None, "plugin": "memory",
-        "does": "deletes the matching facts from Sprout's memory",
+        "does": "deletes the matching facts from Sia's memory",
         "schema": {"type": "object", "properties": {"what": {"type": "string", "description":
                    "the person, thing or fact to forget, in the user's words (e.g. 'my sister', 'HP Victus')"}},
                    "required": ["what"]},
@@ -1074,7 +1074,7 @@ def nothing_to_do(name, args_json):
             return {"error": "no matching pending reminder; nothing was cancelled",
                     "pending": [r["text"] for r in pending]}
     if name == "undo" and not actions._undo_candidate(args.get("what", "last")):
-        return {"error": "nothing Sprout did in this session matches that; nothing was undone"}
+        return {"error": "nothing Sia did in this session matches that; nothing was undone"}
     return None
 
 
@@ -1128,7 +1128,7 @@ def describe(name, args_json):
     if name == "copy":
         return f"Copy {len(str(args.get('text', '')))} characters to the clipboard"
     if name == "save_note":
-        return f"Save a note: Documents\\Sprout\\{args.get('name', 'note')}"
+        return f"Save a note: Documents\\Sia\\{args.get('name', 'note')}"
     if name == "calculate":
         expr = str(args.get("expression", ""))
         return "Calculate: " + (expr if len(expr) <= 80 else expr[:77] + "...")

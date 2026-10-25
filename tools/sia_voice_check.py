@@ -1,14 +1,14 @@
 """Voice mode end to end with the real models, without a microphone or speakers.
 
-Each question is spoken by Sprout's own voice, resampled to 16 kHz and streamed into /api/voice/audio
+Each question is spoken by Sia's own voice, resampled to 16 kHz and streamed into /api/voice/audio
 in 100 ms chunks at real-time pace, as the browser does. The script then times the voice turn:
   end of speech -> transcript (VAD + speech recognition)
   transcript -> first words of the reply (the chat model, in voice mode)
   first sentence -> its audio ready (text to speech)
 and checks the reply is speakable (no markdown) and the memory used with everything loaded.
 
-  python tools/sprout_voice_check.py ["question" ...]
-Starts Sprout without a window on temporary settings and data, then quits it.
+  python tools/sia_voice_check.py ["question" ...]
+Starts Sia without a window on temporary settings and data, then quits it.
 """
 import http.client
 import io
@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "app"))
 import voice  # noqa: E402
 
 H = {"Origin": "http://127.0.0.1:8765", "Content-Type": "application/json"}
-QUESTIONS = ["Hey Sprout, what time is it right now?", "Who created you?",
+QUESTIONS = ["Hey Sia, what time is it right now?", "Who created you?",
              "How many days are left until Christmas?", "Give me one quick tip to focus better while studying."]
 
 
@@ -47,7 +47,7 @@ def call(method, path, body=None, timeout=120, raw=False):
 
 
 def speech_pcm(text):
-    """Sprout's voice saying the question, as 16 kHz 16-bit PCM with silence around it."""
+    """Sia's voice saying the question, as 16 kHz 16-bit PCM with silence around it."""
     with wave.open(io.BytesIO(voice.speak(text))) as w:
         x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
         sr = w.getframerate()
@@ -107,11 +107,11 @@ def rss_mb():
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    with socket.socket() as s:  # never test against the owner's running Sprout
+    with socket.socket() as s:  # never test against the owner's running Sia
         if s.connect_ex(("127.0.0.1", 8765)) == 0:
-            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
+            sys.exit("Sia is already running on port 8765. Quit it first (power button), then rerun.")
     questions = [q for q in sys.argv[1:] if not q.startswith("--")] or QUESTIONS
-    voice.load()  # this process speaks the questions, then frees its copy so only Sprout's models use RAM
+    voice.load()  # this process speaks the questions, then frees its copy so only Sia's models use RAM
     clips = {q: speech_pcm(q) for q in questions}
     voice.unload()
     import gc
@@ -138,7 +138,7 @@ def main():
         print(f"text-only baseline: first words {t_first:.2f}s {chat.timings} free "
               f"{psutil.virtual_memory().available / 2 ** 30:.1f} GB", flush=True)
         st, r = call("POST", "/api/voice/start", {})
-        print(f"voice start: {st} {r}  | RAM (Sprout + llama-server) {rss_mb():.0f} MB, "
+        print(f"voice start: {st} {r}  | RAM (Sia + llama-server) {rss_mb():.0f} MB, "
               f"free {psutil.virtual_memory().available / 2 ** 30:.1f} GB", flush=True)
         events = []
         threading.Thread(target=events_reader, args=(events,), daemon=True).start()
@@ -174,7 +174,7 @@ def main():
             print(f"> {q}\n  heard: {tr['text']!r}\n  reply: {answer[:200]!r}\n  speech end->transcript {t_tr:.2f}s | "
                   f"->first words {t_first:.2f}s | first sentence->audio {t_tts:.2f}s ({len(wav)} B) | "
                   f"voice-to-voice {total:.2f}s | markdown {md}\n  llama: {chat.timings}", flush=True)
-        print(f"\nRAM with voice loaded (Sprout + llama-server): {rss_mb():.0f} MB; free "
+        print(f"\nRAM with voice loaded (Sia + llama-server): {rss_mb():.0f} MB; free "
               f"{psutil.virtual_memory().available / 2 ** 30:.1f} GB")
         if rows:
             print(f"voice-to-voice: median {sorted(rows)[len(rows) // 2]:.2f}s, max {max(rows):.2f}s over {len(rows)} turns")

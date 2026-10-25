@@ -1,8 +1,8 @@
-"""Voice mode: Sprout listens and speaks, fully offline, with the same chat model behind it.
+"""Voice mode: Sia listens and speaks, fully offline, with the same chat model behind it.
 
 A cascaded pipeline, as in Kyutai's Unmute: the user's speech -> text -> the usual chat model -> speech.
 (End-to-end speech models such as Moshi, arXiv 2410.00037, answer faster but are separate 7B GPU
-models; they would not fit beside the 26B chat model, and the user wants Sprout's own model.)
+models; they would not fit beside the 26B chat model, and the user wants Sia's own model.)
 All three parts run on the CPU through sherpa-onnx (k2-fsa, Apache-2.0), measured on this laptop:
 
 - Silero VAD (MIT): finds where speech starts and ends (well under 1 ms per 32 ms chunk).
@@ -14,7 +14,7 @@ All three parts run on the CPU through sherpa-onnx (k2-fsa, Apache-2.0), measure
 - Kokoro-82M v1.0 (Apache-2.0): text to speech, 24 kHz; 6.3 s of speech in 2.4 s on 4 threads
   (fp32). The int8 export was slower than real time on this CPU, so it isn't used.
 
-The browser captures the microphone with echo cancellation, so the user can interrupt Sprout while
+The browser captures the microphone with echo cancellation, so the user can interrupt Sia while
 it speaks; it sends 16 kHz audio here and plays back what speak() returns. Models load when voice
 mode starts and are freed when it stops (~0.7 GB of RAM).
 """
@@ -57,7 +57,7 @@ def wake_split(text, spotted=False):
     """(was the wake phrase said, the request after it). spotted: the keyword spotter heard it in this segment."""
     m = WAKE_TEXT.match(text) or (spotted and WAKE_SIR.match(text))
     return (True, text[m.end():].strip()) if m else (False, text.strip())
-FOLLOW_UP_S = 8  # after the wake phrase, or after Sprout answers: speech without the wake phrase is still for Sprout
+FOLLOW_UP_S = 8  # after the wake phrase, or after Sia answers: speech without the wake phrase is still for Sia
 DEFAULT_VOICE = "af_heart"  # the owner's choice; also Kokoro's top-graded voice (A)
 # Kokoro's English voices graded C or better by its author (hexgrad/Kokoro-82M VOICES.md, "Overall Grade",
 # an estimate of the quality and quantity of each voice's training data), best first. D-graded voices
@@ -119,7 +119,7 @@ class _MisakiKokoro:
             for form in (word, word.lower(), word.upper()):
                 self.g2p.lexicon.golds[form] = sounds
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = int(os.environ.get("SPROUT_TTS_THREADS", "4"))
+        opts.intra_op_num_threads = int(os.environ.get("SIA_TTS_THREADS", "4"))
         self.sess = ort.InferenceSession(str(KOKORO / "model.onnx"), opts, providers=["CPUExecutionProvider"])
         self.vocab = {}
         for line in (KOKORO / "tokens.txt").read_text(encoding="utf-8").splitlines():
@@ -157,7 +157,7 @@ def load_tts(voice=DEFAULT_VOICE):
     with _lock:
         if _M["tts"] is None or _M["lexicon"] != lexicon:
             _M["tts"] = None
-            if os.environ.get("SPROUT_G2P", "misaki") == "misaki":
+            if os.environ.get("SIA_G2P", "misaki") == "misaki":
                 try:
                     _M["tts"] = _MisakiKokoro(british=lexicon.startswith("lexicon-gb"))
                     _M["lexicon"] = lexicon
@@ -173,8 +173,8 @@ def load_tts(voice=DEFAULT_VOICE):
                         tokens=str(KOKORO / "tokens.txt"), data_dir=str(KOKORO / "espeak-ng-data"),
                         lexicon=str(KOKORO / lexicon)),
                     # 4 threads: the first sentence is ready ~0.3 s sooner than with 2. Fewer threads didn't make the
-                    # model write faster while Sprout speaks (finding 64), and it writes ~6x faster than speech anyway.
-                    num_threads=int(os.environ.get("SPROUT_TTS_THREADS", "4")), provider="cpu"),
+                    # model write faster while Sia speaks (finding 64), and it writes ~6x faster than speech anyway.
+                    num_threads=int(os.environ.get("SIA_TTS_THREADS", "4")), provider="cpu"),
                 max_num_sentences=1))
             _M["lexicon"] = lexicon
             _M["speakers"] = _M["speakers"] or _speaker_ids()
@@ -186,9 +186,10 @@ def kws_available():
 
 
 def _spotter():
-    """The wake-phrase spotter (sherpa-onnx Zipformer KWS, GigaSpeech, 3.3M parameters). On spoken test phrases in
-    six voices: 29/30 wake phrases caught, 0 false alarms in 42 others ("His trout", "Brussels sprouts", "sprite",
-    nearby chatter); ~1.5% of one CPU core. A bare "Sprout" keyword fired on "Brussels sprouts", so it isn't used."""
+    """The wake-phrase spotter (sherpa-onnx Zipformer KWS, GigaSpeech, 3.3M parameters, ~1.5% of one CPU core).
+    It reacts within the phrase, so Sia's voice can pause at once; the transcript then decides (WAKE_TEXT), because
+    on its own the spotter caught only 10 of 30 spoken "Hey Sia"s, and with more spellings it fired on "Hey, see you
+    tomorrow". (For the earlier name it caught 29/30 "Hey Sprout"s with no false alarms: longer names spot better.)"""
     import sherpa_onnx
     with _lock:
         if _M.get("kws") is None:
@@ -285,13 +286,14 @@ def speak(text, voice=DEFAULT_VOICE, speed=1.0):
 class Listener:
     """One voice conversation: microphone audio in, events out.
 
-    Events: "wake" (the wake phrase was heard), "speech_start" (speech addressed to Sprout began: used for
-    interrupting), "transcript" (what was said, with "addressed": whether it was meant for Sprout).
+    Events: "wake" (the keyword spotter heard the wake phrase: a quick guess), "speech_start" (speech probably
+    addressed to Sia began: used for pausing its voice), "transcript" (what was said, with "addressed": whether it
+    was meant for Sia, "wake" and "request": the words after the wake phrase).
 
-    mode "wake": only speech that contains the wake phrase ("Hey Sprout", found by a keyword spotter, not the
-    general recogniser, which heard it as "His trout") or starts in the follow-up window is addressed to Sprout.
+    mode "wake": only speech that starts with the wake phrase ("Hey Sia", read from the transcript, see WAKE_TEXT)
+    or starts in the follow-up window is addressed to Sia.
     Other people talking nearby is still transcribed, so the page can recognise "stop", but never answered.
-    mode "always": everything heard is addressed to Sprout (the earlier behaviour; picks up nearby conversations).
+    mode "always": everything heard is addressed to Sia (the earlier behaviour; picks up nearby conversations).
     """
 
     def __init__(self, mode="wake"):
@@ -312,7 +314,7 @@ class Listener:
         self.heard, self.heard_from = np.zeros(0, dtype=np.float32), 0  # recent audio (for pre-roll) and its offset
         self.fed = 0  # samples received so far: the clock for wake hits and the follow-up window
         self.wake_hits = []  # sample positions where the wake phrase was heard
-        self.awake_until = 0  # follow-up window: speech starting before this sample is addressed to Sprout
+        self.awake_until = 0  # follow-up window: speech starting before this sample is addressed to Sia
         self.in_speech = False
         self.closed = False
         self.work = queue.Queue()
