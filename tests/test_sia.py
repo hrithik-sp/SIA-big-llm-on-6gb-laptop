@@ -233,6 +233,11 @@ class SettingsAndTools(unittest.TestCase):
         self.assertIn("guesses_so_far", g.word_game("start", "wordle"))  # a stray start keeps the game
         server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "play again"}]})
         self.assertNotIn("guesses_so_far", g.word_game("start", "wordle"))  # the user asked: a fresh game
+        g.word_game("guess", guess="crane")
+        server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "play again"}]})
+        out = g.word_game("reveal")  # the model picked the wrong action: the user still gets a fresh game
+        self.assertTrue(g.GAME and not g.GAME["over"] and g.GAME["guesses"] == [], out)
+        self.assertIn("fresh one has started", out["note"])
         g.word_game("reveal")
         body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "hi"}]})
         self.assertNotIn("game in progress", body["messages"][-1]["content"])
@@ -616,6 +621,33 @@ class Voice(unittest.TestCase):
         self.assertFalse(L._addressed(40 * R, 42 * R))  # after the window
         L.mode = "always"
         self.assertTrue(L._addressed(40 * R, 42 * R))
+
+    def test_unfinished_turn_waits_for_the_rest(self):
+        """A pause after "so the thing is, um" holds the words; the rest joins them; a finished turn goes at once."""
+        import queue
+        import threading
+        import types
+        v = server.voice
+        L = v.Listener.__new__(v.Listener)
+        L.work, L.parts, L.hold_until, L.turn_lock, L.in_speech = queue.Queue(), [], None, threading.Lock(), False
+        answers = iter([0.1, 0.9])  # unfinished, then finished once the rest is there
+        L.turn = types.SimpleNamespace(complete_probability=lambda audio: next(answers))
+        a, b = server.np.ones(8000, server.np.float32), server.np.ones(16000, server.np.float32)
+        L._add_part((a, True, False))
+        self.assertTrue(L.work.empty())
+        self.assertIsNotNone(L.hold_until)
+        L._add_part((b, False, True))
+        audio, in_window, spotted = L.work.get_nowait()
+        self.assertEqual(len(audio), 8000 + 16000 + 2 * (v.RATE // 10))  # one piece, short gaps between
+        self.assertTrue(in_window and spotted)  # the window from its start, the wake phrase from any part
+        self.assertIsNone(L.hold_until)
+
+    def test_turn_features_shape(self):
+        """Whisper log-mel for Smart Turn: 80 x 800 (8 s), short audio padded, a floor 8 log10 units under the peak."""
+        import turn
+        f = turn.features(server.np.sin(server.np.arange(16000) / 10).astype(server.np.float32))
+        self.assertEqual(f.shape, (1, 80, 800))
+        self.assertTrue(server.np.isfinite(f).all() and f.max() - f.min() <= 2.0001)
 
     def test_wake_phrase_in_the_transcript(self):
         """"Hey Sia" as the recogniser writes it decides; "see you", "Sierra Leone", "Asia" and "sir" (without the

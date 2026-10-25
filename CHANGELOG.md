@@ -23,6 +23,14 @@
   window), ignores other people in the room, and has a pause button.
 - **Knows the world again:** general-knowledge questions (famous people, history, sport) are answered
   instead of refused.
+- **Pauses to think are fine in voice mode:** a sentence that sounds unfinished ("so, um...") waits for the
+  rest instead of being sent half-way.
+- **Speech recognition: fast or accurate** in Settings. Accurate makes about a quarter fewer mistakes with
+  Indian accents and uses 0.5 GB more memory.
+- **Writes what you ask for:** an email, essay, story or sample text comes in full, in the length and format
+  asked, instead of a question back or an attempt to save a file.
+- **Safer chats:** a chat is saved to a temporary file first, so a save cut off midway can no longer empty it.
+- **"Play again"** in a word game always starts a fresh game.
 - **Voice mode:** talk to Sia and it answers aloud in the same window, with both sides in the chat.
   It runs fully offline on the CPU beside the same model. There are 12 natural male and female voices
   with Preview in Settings, and you can interrupt it by talking.

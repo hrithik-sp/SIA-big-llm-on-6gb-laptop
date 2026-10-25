@@ -1713,6 +1713,67 @@ Goal: Sprout separate from Edge, quick and smooth.
     - Sources: misaki (github.com/hexgrad/misaki, Apache-2.0); sherpa-onnx hotwords documentation (k2-fsa/sherpa,
       docs/source/onnx/hotwords); spaCy en_core_web_sm 3.8.0 (MIT).
 
+68. **Sia against public tests: instructions, pauses, accents, facts, and the cold start.**
+    - **Instruction following (IFEval,** Google, arXiv 2311.07911: 541 prompts with checkable instructions such as
+      "exactly 6 paragraphs", "all lowercase", "wrap in double quotes"**).** `tools/sia_ifeval.py` sends a fixed
+      sample of 100 (seed 0) through Chat mode exactly as typed and declines any tool call, counting it (a writing
+      task needs no tool: the "irrelevance" idea from BFCL). Scored with Google's own checker:
+
+      | Run | Prompt-level strict | Instruction-level strict | Prompt-level loose | Instruction-level loose | Tool calls |
+      |---|---|---|---|---|---|
+      | 100 prompts, Chat prompt before the fix | 0.82 | 0.877 | 0.85 | 0.903 | 2 |
+
+      Three of the 18 strict failures were behaviour, not ability: a planning doc answered with "What's the task?",
+      "Write a file" taken as saving to disk, and "Hallucinate a resume" refused as dishonest. The Chat prompt now says
+      that a request to write something gets the whole piece in the reply, in exactly the length and format asked,
+      with invented details where needed. Retest on the same 42 prompts (the 18 failures plus 24 passes):
+      **24/42 → 32/42** with every instruction met, 8 fixed, **0 broken**, tool calls 2 → 0. What is left is counting
+      (sentences, words, a letter's frequency) and two imperfect "repeat the request first" copies: Chat answers
+      without thinking, for speed, and counting is where that shows.
+    - **Pauses mid-sentence (Smart Turn v3.2,** Pipecat, BSD-2: a Whisper-tiny encoder, int8 ONNX, 8.7 MB**).** The
+      voice used to send a turn after 0.6 s of silence, so "So, um, …" was cut off. The model hears the last 8 s and
+      says whether the turn sounds finished. Features are computed in numpy (Whisper log-mel; max difference from
+      the reference extractor 1.2e-7), 34 ms per call on the CPU. On the human English rows of its official test set
+      (one shard, 538 recordings, CC BY 4.0): **89.2% right**, 51/261 unfinished turns would be cut off, 7/277
+      finished ones made to wait. Sia now ends a finished-sounding turn after 0.5 s and waits up to 1.5 s more when
+      it sounds unfinished. (Speech from the voice itself is no test: it ends every fragment on a falling tone.)
+    - **Accents (VoiceBench sd-qa,** Apache-2.0: real speakers reading questions; 120 per accent**).** Word error rate:
+
+      | Recogniser | India (north) | India (south) | USA |
+      |---|---|---|---|
+      | Parakeet TDT 110M, with the "Sia" hotwords (default, "fast") | 14.4% | 13.5% | 10.1% |
+      | Parakeet TDT 0.6B v3 ("accurate", +0.5 GB RAM) | 12.0% | 9.8% | 7.3% |
+
+      The hotwords don't raise the error rate. Settings now has "Speech recognition: fast / accurate"; fast stays the
+      default because the extra 0.5 GB pushes Gemma into more SSD paging. The 0.6B model's vocabulary is cased, so the
+      hotwords list "Sia" and "Hey Sia" as well: wake phrases caught **45/48** with 1/66 false alarms (fast) and
+      41/48 with 0/66 (accurate).
+    - **Everyday questions.** Twelve practical questions (a drying-time trick question, letters in "strawberry", a
+      15% tip, a weekday in 1947, Hinglish DBMS help, an email to a professor, code, a stressed message): 11 right.
+      The miss was trivia, so 20 fact questions (10 common, 10 niche Indian facts) were asked twice in fresh
+      sessions: **36/40 right**. The wrong answers were confident (the 2011 final's player of the match, the bowler
+      of the winning six, the year ISRO was founded). Telling Sia to say when it isn't sure of a detail changed
+      nothing (36/40 again, no answer hedged), so that line was not kept: the model doesn't know which details it is
+      missing. Niche facts from an offline model are right most of the time, not always.
+    - **The cold start is memory-bound.** Measured with Windows counters every second: loading reads the GPU part at
+      5.7 GB/s, then the experts that stay on the CPU (layers 6–29, **9.71 GiB**) fault in from the SSD at ~300 MB/s
+      for about 30 s, while available RAM falls from 10 GB to 0.1–0.3 GB. llama-server's file-backed working set is
+      ~9.3 GB (Windows already drops the GPU-uploaded copy). A sequential pre-read of exactly those expert ranges
+      (2.9 GiB/s, 3.3 s) did **not** help (first reply 66 s against 56–59 s): RAM was already full, so the pre-read
+      pages were evicted before use. Halving the context (8k) would move only one more layer's experts to the GPU.
+      With the usual apps open the model is about 1 GB short of RAM, and some paging is the price.
+    - **Fixes found along the way.** An empty memory note made Sia save the owner's name as a "memory" during a writing
+      task (the note now says the name comes from Settings). A chat file was found as 3,200 zero bytes (a save cut off
+      midway); chats are now written to a temporary file and renamed. "Play again" in the middle of Wordle made the
+      model end the game and then say a new word was ready; the referee now starts a fresh game whenever the user
+      asks for one. The test tools now run Sia on a throwaway data folder.
+    - Re-check on the final code: unit tests 91/91, behaviour 8/8 (first word median 2.7 s), daily 39/40 before the
+      Wordle fix, end-to-end 12/12, real-page voice check passed (two friends' lines ignored, two requests answered,
+      1.0 and 1.5 s from text to voice).
+    - Sources: IFEval (github.com/google-research/google-research, instruction_following_eval, Apache-2.0); Smart
+      Turn v3.2 (huggingface.co/pipecat-ai/smart-turn-v3) and its test set (pipecat-ai/smart-turn-data-v3.2-test);
+      VoiceBench (arXiv 2410.17196; hlt-lab/voicebench, sd-qa); BFCL (gorilla.cs.berkeley.edu).
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |

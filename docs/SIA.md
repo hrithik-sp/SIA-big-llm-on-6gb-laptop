@@ -94,8 +94,14 @@ button again to stop.
   Parakeet 110M turns your speech into text (about 0.1 s), and Kokoro-82M speaks the reply sentence
   by sentence while it is still being written.
 - **"Hey Sia"** is checked on what was heard: the recogniser is nudged towards the name, and speech counts as
-  meant for Sia only if it starts with a greeting and the name (40 of 48 test phrases caught, 1 false alarm in
-  66 others, finding 67). Words spelled alike are said by meaning ("live location", "I live here").
+  meant for Sia only if it starts with a greeting and the name (45 of 48 test phrases caught, 1 false alarm in
+  66 others, findings 67–68). Words spelled alike are said by meaning ("live location", "I live here").
+- **Pauses to think are fine:** Smart Turn v3.2 (Pipecat, an 8M-parameter model, about 30 ms on the CPU) listens
+  to how the sentence ends. A turn that sounds finished goes after a 0.5 s pause; one that sounds unfinished ("so
+  the thing is, um...") waits up to 2 s for the rest instead of being cut off.
+- **Speech recognition: fast or accurate** (Settings). Fast (Parakeet 110M) is the default. Accurate (Parakeet
+  0.6B v3) makes about a quarter fewer mistakes with Indian accents (south Indian speakers: 13.5% → 9.8% of words
+  wrong) but uses 0.5 GB more RAM, which can slow the model while it pages from the SSD (finding 68).
 - **12 natural voices**, male and female, American and British. Choose one in Settings and press
   Preview to hear it. The default is Heart (female, the highest-graded voice).
 - The voice models load when voice mode starts and are freed when it stops (about 0.7 GB of RAM).
@@ -221,6 +227,10 @@ the models.
    `silero_vad.onnx`, `sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8` and
    `kokoro-multi-lang-v1_0` (unpack the archives), and for the wake phrase
    `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (tag `kws-models`). Without them, voice mode simply says it isn't installed.
+   For end-of-turn detection, also put `smart-turn-v3.2-cpu.onnx` from Hugging Face `pipecat-ai/smart-turn-v3`
+   (BSD-2-Clause, 8.7 MB) in `voice\smart-turn-v3\`; without it, a pause of 0.6 s ends a turn.
+   For "Speech recognition: accurate", also unpack `sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` (tag `asr-models`);
+   without it, the setting falls back to the fast recogniser.
 7. Open **Sia** and put your name in Settings, so it knows who it works for.
 
 To run it without installing: `python app\server.py` (or `--background`, `--model gptoss`,
@@ -230,7 +240,7 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 89 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 91 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sia_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sia_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sia_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |

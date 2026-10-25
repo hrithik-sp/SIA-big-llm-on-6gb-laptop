@@ -699,7 +699,8 @@ def kb_list():
 # --------------------------------------------------------------------------- settings
 SETTINGS_FILE = DATA / "settings.json"
 DEFAULT_SETTINGS = {"laptop_access": True, "laptop_actions": True, "always_allow": [], "user_name": "",
-                    "voice_name": voice.DEFAULT_VOICE, "pronouns": "", "voice_listen": "wake"}
+                    "voice_name": voice.DEFAULT_VOICE, "pronouns": "", "voice_listen": "wake",
+                    "voice_stt": "fast"}
 PRONOUNS = {"he/him": ("he", "his"), "she/her": ("she", "her"), "they/them": ("they", "their")}
 ACTIONS_LOG = DATA / "logs" / "actions.log"
 
@@ -856,7 +857,10 @@ def memory_note(limit=2000):
     text = "\n".join(lines)
     if len(text) > limit:
         text = text[:limit] + "\n- ... (more: use memory_search_nodes)"
-    return "What you remember about the user (all of it): " + (" ".join(text.split("\n")) or "nothing yet.")
+    # "nothing yet" alone made the model save the owner's name (already known from Settings) during a writing task
+    return "What you remember about the user (all of it): " + (" ".join(text.split("\n")) or (
+        "nothing yet. Their name comes from Settings: don't save it. Save only a lasting fact they tell you about "
+        "themselves."))
 
 
 def is_math(text):
@@ -1289,7 +1293,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if path.startswith("/api/chats/"):
                 f = chat_file(path.rsplit("/", 1)[1])
                 CHATS.mkdir(parents=True, exist_ok=True)
-                f.write_text(self._body().decode("utf-8"), encoding="utf-8")
+                # write then rename: a save cut short (the app killed mid-write) once left a chat as 3,200 zero bytes
+                tmp = f.with_suffix(".tmp")
+                tmp.write_text(self._body().decode("utf-8"), encoding="utf-8")
+                os.replace(tmp, f)
                 return self._json({"ok": True})
             if path == "/api/settings":
                 upd = json.loads(self._body() or b"{}")
@@ -1306,6 +1313,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     st["pronouns"] = upd["pronouns"]
                 if upd.get("voice_listen") in ("wake", "always"):
                     st["voice_listen"] = upd["voice_listen"]
+                if upd.get("voice_stt") in ("fast", "accurate"):
+                    st["voice_stt"] = upd["voice_stt"]
                 if upd.get("voice_name") in voice.VOICE_IDS:
                     st["voice_name"] = upd["voice_name"]
                 save_settings(st)
@@ -1363,7 +1372,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if what == "start":
             if not voice.available():
                 return self._json({"error": "The voice models aren't installed (see docs/SIA.md, Voice)."}, 404)
-            voice.load(load_settings()["voice_name"])
+            voice.load(load_settings()["voice_name"], load_settings().get("voice_stt", "fast"))
             old, STATE["listener"] = STATE.get("listener"), voice.Listener(load_settings()["voice_listen"])
             if old:
                 old.close()
@@ -1659,6 +1668,10 @@ def shutdown():
 
 
 def main(argv=None):
+    global CHATS, KB_DIR
+    # test harnesses point DATA at a temporary folder before calling main(): chats and the Library follow it
+    # (they were fixed at import, so test conversations once appeared in the owner's chat list)
+    CHATS, KB_DIR = DATA / "chats", DATA / "kb"
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-browser", action="store_true", help="don't open a window (for testing)")
     ap.add_argument("--background", action="store_true", help="start quietly: no window, no model until summoned")

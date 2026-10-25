@@ -10,8 +10,10 @@ Each scenario checks for a specific expected answer.
 import base64
 import http.client
 import json
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -95,8 +97,13 @@ def main():
     if llama_procs():
         sys.exit("a llama-server is already running; stop it first")
     ram0 = psutil.virtual_memory().available
-    proc = subprocess.Popen([sys.executable, str(ROOT / "app" / "server.py"), "--no-browser", "--no-autoquit"],
-                            cwd=str(ROOT))
+    tmp = Path(tempfile.mkdtemp())  # never the user's own chats, Library or settings
+    (tmp / "settings.json").write_text(json.dumps({"user_name": "Hrithik S P"}))
+    code = ("import sys, pathlib; sys.argv=['server.py','--no-browser','--no-autoquit']; "
+            f"sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
+            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); "
+            "server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
+    proc = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT))
     for _ in range(120):
         if proc.poll() is not None:
             sys.exit(f"Sia exited during startup (code {proc.returncode})")
@@ -154,6 +161,7 @@ def main():
     left = llama_procs()
     check("quit: no llama-server left", not left, f"{len(left)} left; RAM available now "
           f"{psutil.virtual_memory().available / 2**30:.1f} GiB (before start {ram0 / 2**30:.1f})")
+    shutil.rmtree(tmp, ignore_errors=True)
     n_ok = sum(ok for _, ok in RESULTS)
     print(f"\n{n_ok}/{len(RESULTS)} checks passed")
     return 0 if n_ok == len(RESULTS) else 1

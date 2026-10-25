@@ -559,6 +559,10 @@ Full commands: lab notebook, "Recommended settings".
 | 50 | Voice answered a friend's conversation line by line | Always listening | "Hey Sprout" wake phrase (keyword spotter: 29/30 caught, 0/42 false alarms), follow-up window, stop words, pause button | 66 |
 | 51 | "Live location" read as "liv" | The voice's front end looked words up without their meaning | misaki, Kokoro's own front end, reads the sentence's grammar: 29/32 heteronyms right instead of 17/32 | 67 |
 | 52 | "Hey Sia" rarely woke it, or woke on "Hey, see you tomorrow" | A short name is a weak keyword | The recogniser is nudged towards "Sia" and the transcript decides: 40/48 caught, 1/66 false alarms | 67 |
+| 53 | Asked to write something, Sia sometimes asked "what's the task?", tried to save a file, or refused a made-up sample | The texting style won over the request | The Chat prompt says a writing request gets the whole piece, in the format asked: IFEval retest 24/42 → 32/42, none broken | 68 |
+| 54 | A pause to think ended the turn mid-sentence | A fixed 0.6 s of silence ended every turn | Smart Turn v3.2 hears whether the sentence sounds finished: 89% right on 538 real recordings | 68 |
+| 55 | More recognition mistakes with Indian accents | The small recogniser | "Speech recognition: accurate" in Settings: south Indian 13.5% → 9.8% word errors, +0.5 GB RAM | 68 |
+| 56 | "Play again" mid-Wordle ended the game and Sia said a new word was ready | The model picked the wrong game action | The referee starts a fresh game whenever the user asks for one | 68 |
 
 ---
 

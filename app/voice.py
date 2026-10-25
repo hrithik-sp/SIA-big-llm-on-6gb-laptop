@@ -23,6 +23,7 @@ import os
 import queue
 import re
 import threading
+import time
 import wave
 from pathlib import Path
 
@@ -32,6 +33,10 @@ LLM = Path(os.environ.get("LLM_HOME") or Path.home() / "llm")
 VOICE_DIR = LLM / "models" / "voice"
 KOKORO = VOICE_DIR / "kokoro-multi-lang-v1_0"
 PARAKEET = VOICE_DIR / "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8"
+# "Accurate" in Settings: Parakeet TDT 0.6B v3. On VoiceBench sd-qa (real speakers, 120 questions per accent) word
+# errors fell from 14.4% to 12.0% (north Indian English), 13.5% to 9.8% (south Indian) and 10.1% to 7.3% (US), for
+# ~0.25 s more per sentence and ~0.5 GB more RAM (which can push the 26B model into SSD paging on a full laptop).
+PARAKEET_ACCURATE = VOICE_DIR / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"
 VAD_MODEL = VOICE_DIR / "silero_vad.onnx"
 RATE = 16000  # microphone audio, as the VAD and recogniser expect
 WINDOW = 512  # samples per VAD step (32 ms)
@@ -57,6 +62,11 @@ def wake_split(text, spotted=False):
     """(was the wake phrase said, the request after it). spotted: the keyword spotter heard it in this segment."""
     m = WAKE_TEXT.match(text) or (spotted and WAKE_SIR.match(text))
     return (True, text[m.end():].strip()) if m else (False, text.strip())
+# End of turn: with Smart Turn (turn.py) a pause of TURN_SILENCE ends a turn that sounds finished; one that sounds
+# unfinished ("so the thing is, um ...") waits up to TURN_HOLD more for the rest. On 538 human English recordings of
+# its test set it caught 80% of unfinished turns and held up 2.5% of finished ones; without it, every 0.6 s pause
+# ended the turn. A shorter pause (0.3 s) would answer sooner but split "Open Chrome. ... And set a timer." in two.
+TURN_SILENCE, TURN_HOLD = 0.5, 1.5
 FOLLOW_UP_S = 8  # after the wake phrase, or after Sia answers: speech without the wake phrase is still for Sia
 DEFAULT_VOICE = "af_heart"  # the owner's choice; also Kokoro's top-graded voice (A)
 # Kokoro's English voices graded C or better by its author (hexgrad/Kokoro-82M VOICES.md, "Overall Grade",
@@ -202,27 +212,33 @@ def _spotter():
         return _M["kws"]
 
 
-def load(voice=DEFAULT_VOICE):
+def stt_path(kind="fast"):
+    return PARAKEET_ACCURATE if kind == "accurate" and (PARAKEET_ACCURATE / "tokens.txt").exists() else PARAKEET
+
+
+def load(voice=DEFAULT_VOICE, stt="fast"):
     """Load the recogniser and the voice (once; a few seconds)."""
     import sherpa_onnx
     load_tts(voice)
+    path = stt_path(stt)
     with _lock:
-        if _M["stt"] is None:
+        if _M["stt"] is None or _M.get("stt_path") != path:
             _M["stt"] = sherpa_onnx.OfflineRecognizer.from_transducer(
-                encoder=str(PARAKEET / "encoder.int8.onnx"), decoder=str(PARAKEET / "decoder.int8.onnx"),
-                joiner=str(PARAKEET / "joiner.int8.onnx"), tokens=str(PARAKEET / "tokens.txt"),
-                num_threads=4, model_type="nemo_transducer", **_hotword_args())
+                encoder=str(path / "encoder.int8.onnx"), decoder=str(path / "decoder.int8.onnx"),
+                joiner=str(path / "joiner.int8.onnx"), tokens=str(path / "tokens.txt"),
+                num_threads=4, model_type="nemo_transducer", **_hotword_args(path))
+            _M["stt_path"] = path
 
 
-def _hotword_args():
+def _hotword_args(model=PARAKEET):
     """Contextual biasing (sherpa-onnx hotwords: modified beam search plus an Aho-Corasick graph of the hotwords'
     pieces) so the recogniser writes "Sia" instead of "see ya" / "sir". It needs a BPE vocabulary; Parakeet ships
     only tokens.txt, so one is written from it (piece, then a score that favours earlier, more frequent pieces).
     +12 ms per 3.8 s sentence."""
-    vocab = PARAKEET / "bpe.vocab"
+    vocab = model / "bpe.vocab"
     try:
         if not vocab.exists():
-            with open(PARAKEET / "tokens.txt", encoding="utf-8") as f:
+            with open(model / "tokens.txt", encoding="utf-8") as f:
                 rows = [line.rstrip("\n").rsplit(" ", 1) for line in f if line.strip()]
             vocab.write_text("".join(f"{tok}\t{-float(i)}\n" for tok, i in rows), encoding="utf-8")
     except OSError:
@@ -233,7 +249,7 @@ def _hotword_args():
 
 def unload():
     with _lock:
-        _M["tts"] = _M["stt"] = _M["lexicon"] = _M["kws"] = None
+        _M["tts"] = _M["stt"] = _M["lexicon"] = _M["kws"] = _M["stt_path"] = None
 
 
 def loaded():
@@ -298,9 +314,12 @@ class Listener:
 
     def __init__(self, mode="wake"):
         import sherpa_onnx
+        import turn
+        self.turn = turn if turn.available() else None
         cfg = sherpa_onnx.VadModelConfig(
             silero_vad=sherpa_onnx.SileroVadModelConfig(
-                model=str(VAD_MODEL), threshold=0.5, min_silence_duration=0.6, min_speech_duration=0.25,
+                model=str(VAD_MODEL), threshold=0.5, min_silence_duration=TURN_SILENCE if self.turn else 0.6,
+                min_speech_duration=0.25,
                 max_speech_duration=25, window_size=WINDOW),
             sample_rate=RATE, num_threads=1, provider="cpu")
         self.vad = sherpa_onnx.VoiceActivityDetector(cfg, buffer_size_in_seconds=60)
@@ -318,6 +337,7 @@ class Listener:
         self.in_speech = False
         self.closed = False
         self.work = queue.Queue()
+        self.parts, self.hold_until, self.turn_lock = [], None, threading.Lock()  # a turn that sounded unfinished
         threading.Thread(target=self._transcriber, daemon=True).start()
 
     def awake(self, seconds):
@@ -364,9 +384,34 @@ class Listener:
                 seg = self.vad.front
                 samples = np.array(seg.samples, dtype=np.float32)
                 end = seg.start + len(samples)
-                self.work.put((self._with_preroll(seg.start, samples),
-                               self.mode == "always" or seg.start < self.awake_until, self._spotted(seg.start, end)))
+                part = (self._with_preroll(seg.start, samples), self.mode == "always" or seg.start < self.awake_until,
+                        self._spotted(seg.start, end))
                 self.vad.pop()
+                if self.turn:
+                    self._add_part(part)
+                else:
+                    self.work.put(part)
+
+    def _add_part(self, part):
+        """A pause: if what was said so far sounds finished, transcribe it now; else hold it for the rest."""
+        with self.turn_lock:
+            self.parts.append(part)
+            audio = np.concatenate([np.concatenate([a, np.zeros(RATE // 10, np.float32)]) for a, _, _ in self.parts])
+            try:
+                done = self.turn.complete_probability(audio) > 0.5
+            except Exception:  # the turn model failed: fall back to the pause alone
+                done = True
+            if done:
+                self._flush()
+            else:
+                self.hold_until = time.monotonic() + TURN_HOLD
+
+    def _flush(self):
+        """Send the held turn for transcription as one piece (caller holds turn_lock)."""
+        if self.parts:
+            audio = np.concatenate([np.concatenate([a, np.zeros(RATE // 10, np.float32)]) for a, _, _ in self.parts])
+            self.work.put((audio, self.parts[0][1], any(s for _, _, s in self.parts)))
+        self.parts, self.hold_until = [], None
 
     def _with_preroll(self, start, samples):
         """The segment plus the PREROLL before it: the detector marks speech a little late, and without this the
@@ -379,8 +424,11 @@ class Listener:
     def _transcriber(self):
         while not self.closed:
             try:
-                seg, in_window, spotted = self.work.get(timeout=0.5)
+                seg, in_window, spotted = self.work.get(timeout=0.1)
             except queue.Empty:
+                with self.turn_lock:  # a held turn whose rest never came: send it as it is
+                    if self.hold_until and time.monotonic() > self.hold_until and not self.in_speech:
+                        self._flush()
                 continue
             try:
                 text = transcribe(seg)

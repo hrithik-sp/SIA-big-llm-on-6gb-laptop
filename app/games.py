@@ -129,6 +129,12 @@ def word_game(action, game="wordle", guess="", new=False):
     if WANTS_REVEAL["flag"] and GAME and not GAME["over"]:  # the user asked for the answer: reveal it
         WANTS_REVEAL["flag"] = False
         action = "reveal"
+    if WANTS_NEW["flag"] and GAME and action != "start":
+        # "play again": the model once called reveal, ended the game and then said "a new word is ready"
+        old = GAME["word"].upper()
+        out = word_game("start", GAME["kind"], new=True)
+        out["note"] = f"The user asked for a new game: a fresh one has started (the last word was {old}). " + out["note"]
+        return out
     if action == "start":
         if game not in ("wordle", "hangman"):
             return {"error": "game must be wordle or hangman"}

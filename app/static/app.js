@@ -130,6 +130,7 @@ function renderSettings() {
   if (document.activeElement !== $("#set-name")) $("#set-name").value = st.user_name || "";
   $("#set-pronouns").value = st.pronouns || "";
   $("#set-listen").value = st.voice_listen || "wake";
+  $("#set-stt").value = st.voice_stt || "fast";
   const sv = $("#set-voice");
   if (st.voices && sv.options.length !== st.voices.length) {  // best first within each group (Kokoro's grades)
     sv.innerHTML = "";
@@ -815,6 +816,7 @@ function wire() {
   $("#voice").onclick = toggleVoice;
   $("#set-voice").onchange = (e) => saveSettings({ voice_name: e.target.value });
   $("#set-listen").onchange = (e) => { saveSettings({ voice_listen: e.target.value }); if (V.on) toast("Takes effect the next time voice starts.", 3500); };
+  $("#set-stt").onchange = (e) => { saveSettings({ voice_stt: e.target.value }); if (V.on) toast("Takes effect the next time voice starts.", 3500); };
   $("#voice-pause").onclick = toggleListening;
   $("#voice-preview").onclick = previewVoice;
   $("#stop").onclick = stop;
