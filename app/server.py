@@ -319,7 +319,59 @@ def run_native_window(url, hidden):
         return False  # cancel the close: Sprout stays resident (Quit in the app stops it)
     w.events.closing += on_closing
     WINDOW["w"], WINDOW["visible"] = w, not hidden
+    _guard_webview()
     webview.start(gui="edgechromium", private_mode=True, icon=str(APP / "static" / "logo.ico"))
+
+
+def log_line(text):
+    """One timestamped line in app-data/logs/sprout.log (Sprout runs without a console)."""
+    try:
+        DATA.joinpath("logs").mkdir(parents=True, exist_ok=True)
+        with open(DATA / "logs" / "sprout.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {text}\n")
+    except OSError:
+        pass
+
+
+def _guard_webview():
+    """Recover when WebView2's processes die (the owner once ended "WebView2 Manager" in Task Manager and the
+    window went blank; pywebview doesn't handle WebView2's ProcessFailed event). Per Microsoft's WebView2
+    docs, a crashed page renderer is fixed by reloading; once the browser process itself has exited the
+    control can't be reused, so Sprout relaunches itself and comes back on its own."""
+    try:
+        from webview.platforms import edgechromium
+    except ImportError:
+        return
+    original = edgechromium.EdgeChrome.on_webview_ready
+
+    def on_ready(self, sender, args):
+        original(self, sender, args)
+        if args.IsSuccess:
+            sender.CoreWebView2.ProcessFailed += lambda s, e: _webview_failed(self, e)
+    edgechromium.EdgeChrome.on_webview_ready = on_ready
+
+
+def _webview_failed(chrome, event):
+    kind = str(event.ProcessFailedKind)
+    log_line(f"WebView2 process failed: {kind}")
+    if "BrowserProcessExited" in kind:
+        relaunch()
+    elif "RenderProcess" in kind or "FrameRenderProcess" in kind:
+        try:
+            chrome.webview.CoreWebView2.Reload()
+        except Exception:  # if even that fails, start over
+            relaunch()
+
+
+def relaunch():
+    """Start a fresh Sprout that waits for this one to exit, then exit (children go with the job object)."""
+    exe = Path(sys.executable)
+    exe = exe.with_name("pythonw.exe") if exe.with_name("pythonw.exe").exists() else exe
+    args = [str(exe), str(APP / "server.py"), "--after-pid", str(os.getpid())]
+    if not WINDOW["visible"]:
+        args.append("--background")
+    subprocess.Popen(args, cwd=str(APP), creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
+    threading.Thread(target=shutdown, daemon=True).start()
 
 
 def open_window(url):
@@ -1541,7 +1593,14 @@ def main(argv=None):
     ap.add_argument("--no-autoquit", action="store_true", help=argparse.SUPPRESS)  # old flag, now the default
     ap.add_argument("--open-file", help="attach this file in Sprout (used by the Explorer 'Ask Sprout' menu)")
     ap.add_argument("--model", choices=list(PRESETS), help="model to load at startup (default: by free RAM)")
+    ap.add_argument("--after-pid", type=int, help=argparse.SUPPRESS)  # relaunch: wait for the old Sprout to exit
     a = ap.parse_args(argv)
+    if a.after_pid:
+        try:
+            psutil.Process(a.after_pid).wait(30)
+        except (psutil.Error, psutil.TimeoutExpired):
+            pass
+        log_line("relaunched after the window's WebView2 process failed")
     missing = [str(p) for k, p in FILES.items() if k != "embed" and not p.exists()]
     if missing:
         message_box("Sprout can't start: model files are missing:\n\n" + "\n".join(missing))
