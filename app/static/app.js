@@ -534,15 +534,10 @@ function toolNote(v, ev) {
 // The microphone is captured with the browser's echo cancellation, so Sprout's own voice is removed and
 // the user can interrupt it by talking. Audio goes to the backend (VAD + speech recognition); what the
 // user said is sent as a normal message, and the reply is spoken sentence by sentence while it streams.
-const V = { on: false, starting: false, ctx: null, mic: null, node: null, sendQ: [], sending: false,
-  events: null, say: [], pending: "", gen: 0, playing: null, fetching: false, queuedText: null };
+const V = { on: false, starting: false, ctx: null, out: null, mic: null, node: null, sendQ: [], sending: false,
+  events: null, say: [], pending: "", gen: 0, playing: null, fetching: false, paused: false, resumeTimer: null,
+  speakingSince: 0, lastEnd: 0, recent: [] };
 
-function voiceState(state) {  // idle | hearing | speaking: the mic button shows it
-  document.body.classList.toggle("voice-hearing", state === "hearing");
-  document.body.classList.toggle("voice-speaking", state === "speaking");
-  $("#input").placeholder = !V.on ? "Ask Sprout…" : state === "speaking" ? "Speaking… (talk to interrupt)"
-    : state === "hearing" ? "Listening…" : S.streaming ? "Thinking…" : "Talk to Sprout, or type";
-}
 async function toggleVoice() {
   if (V.starting) return;
   if (V.on) return stopVoice();
@@ -555,6 +550,7 @@ async function toggleVoice() {
     V.node = new AudioWorkletNode(V.ctx, "sprout-capture");
     V.node.port.onmessage = (e) => { V.sendQ.push(e.data); pumpAudio(); };
     V.ctx.createMediaStreamSource(V.mic).connect(V.node);
+    V.out = new AudioContext();  // playback on its own context, so Sprout can pause its voice without pausing the mic
     V.on = true; $("#voice").setAttribute("aria-pressed", "true");
     voiceEvents(); voiceState("idle"); toast("Voice on. Just talk; tap the mic again to stop.", 3500);
     wake();
@@ -569,7 +565,9 @@ async function stopVoice() {
   if (V.playing) { try { V.playing.stop(); } catch {} V.playing = null; }
   if (V.mic) V.mic.getTracks().forEach((t) => t.stop());
   if (V.ctx) V.ctx.close().catch(() => {});
-  Object.assign(V, { ctx: null, mic: null, node: null, sendQ: [], say: [], pending: "", events: null });
+  if (V.out) V.out.close().catch(() => {});
+  clearTimeout(V.resumeTimer);
+  Object.assign(V, { ctx: null, out: null, mic: null, node: null, sendQ: [], say: [], pending: "", events: null, paused: false, recent: [] });
   $("#voice").setAttribute("aria-pressed", "false"); voiceState("idle");
   await post("/api/voice/stop").catch(() => {});
 }
@@ -599,30 +597,59 @@ async function voiceEvents() {
     }
   } catch (e) { if (V.on && e.name !== "AbortError") toast("Voice connection lost; tap the mic to restart.", 5000); }
 }
+// Interruptions, as LiveKit Agents handles them (docs.livekit.io, turn-taking tuning): speech heard while Sprout
+// talks first PAUSES its voice; only real words from the user stop it. An echo of Sprout's own voice (likely at
+// high volume), a short "okay" / "mm-hm", or noise resumes it where it paused. The first 0.7 s of a reply,
+// when echo is worst, never pauses it (LiveKit uses 1 s; shorter keeps interrupting snappy). A reply still being written is never cancelled by a sound alone.
+// (A sound that stopped speech at once made Sprout cut its own sentence and drop the next reply.)
+const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]?hm+|sure|got it|i see)[.!?]*$/i;
 function onVoiceEvent(ev) {
   if (ev.type === "speech_start") {
-    if (V.playing || V.say.length || S.streaming) bargeIn();  // the user talks over Sprout: Sprout stops
     voiceState("hearing");
+    if ((V.playing || V.say.length) && performance.now() - V.speakingSince > 700) pauseSpeech();
   } else if (ev.type === "transcript") {
+    clearTimeout(V.resumeTimer);
+    const speaking = V.playing || V.say.length || V.paused;
+    const justSpoke = performance.now() - V.lastEnd < 3000;  // recognition ends ~0.6 s after the sound does
+    if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) { resumeSpeech(); return; }
+    if (speaking || S.streaming) bargeIn();  // real words: Sprout stops and answers them
     voiceState("idle"); askByVoice(ev.text);
-  } else if (ev.type === "speech_end") { voiceState(V.playing ? "speaking" : "idle"); }
+  } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
+}
+function words(text) { return (text.toLowerCase().match(/[a-z0-9']+/g) || []); }
+function isEcho(text) {  // what the mic heard is mostly what Sprout itself just said
+  const heard = words(text), said = new Set(V.recent.filter((r) => performance.now() - r.t < 30000).flatMap((r) => words(r.text)));
+  if (!heard.length) return true;
+  return heard.filter((w) => said.has(w)).length / heard.length >= 0.6 && (heard.length >= 2 || said.has(heard[0]));
+}
+function pauseSpeech() {
+  if (!V.out || V.paused) return;
+  V.paused = true; V.out.suspend().catch(() => {});
+  clearTimeout(V.resumeTimer);
+  V.resumeTimer = setTimeout(resumeSpeech, 2500);  // no words came: it wasn't an interruption
+}
+function resumeSpeech() {
+  clearTimeout(V.resumeTimer);
+  if (V.paused && V.out) { V.paused = false; V.out.resume().catch(() => {}); }
+  voiceState(V.playing ? "speaking" : "idle");
 }
 async function previewVoice() {
   const btn = $("#voice-preview"); btn.disabled = true; btn.textContent = "Loading…";
   try {
     const r = await fetch("/api/voice/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: $("#set-voice").value }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-    const ctx = V.ctx || new AudioContext();
+    const ctx = V.out || new AudioContext();
     const src = ctx.createBufferSource(); src.buffer = await ctx.decodeAudioData(await r.arrayBuffer());
     src.connect(ctx.destination); src.start();
-    src.onended = () => { if (ctx !== V.ctx) ctx.close(); };
+    src.onended = () => { if (ctx !== V.out) ctx.close(); };
   } catch (e) { toast(`Couldn't play the voice: ${e.message}`); }
   finally { btn.disabled = false; btn.textContent = "Preview"; }
 }
 function bargeIn() {
   V.gen++; V.say = []; V.pending = "";
   if (V.playing) { try { V.playing.stop(); } catch {} V.playing = null; }
+  if (V.paused) { V.paused = false; if (V.out) V.out.resume().catch(() => {}); }
   if (S.streaming) stop();
 }
 async function askByVoice(text) {
@@ -663,21 +690,23 @@ async function prefetchSpeech() {
       const item = V.say.find((x) => !x.audio && x.gen === V.gen);
       if (!item || V.say.filter((x) => x.audio).length >= 2) break;  // keep at most two sentences ready
       const r = await fetch("/api/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: item.text }) });
-      item.audio = r.status === 200 && V.ctx ? await V.ctx.decodeAudioData(await r.arrayBuffer()).catch(() => "skip") : "skip";
+      item.audio = r.status === 200 && V.out ? await V.out.decodeAudioData(await r.arrayBuffer()).catch(() => "skip") : "skip";
       playNext();
     }
   } finally { V.fetching = false; }
 }
 function playNext() {
-  if (!V.on || V.playing || !V.ctx) return;
+  if (!V.on || V.playing || !V.out) return;
   V.say = V.say.filter((x) => x.gen === V.gen);
   const item = V.say[0];
   if (!item) { voiceState("idle"); return; }
   if (!item.audio) return;  // still being made
   V.say.shift();
   if (item.audio === "skip") { playNext(); prefetchSpeech(); return; }
-  const src = V.ctx.createBufferSource(); src.buffer = item.audio; src.connect(V.ctx.destination);
-  src.onended = () => { if (V.playing === src) V.playing = null; playNext(); prefetchSpeech(); };
+  const src = V.out.createBufferSource(); src.buffer = item.audio; src.connect(V.out.destination);
+  src.onended = () => { if (V.playing === src) V.playing = null; V.lastEnd = performance.now(); playNext(); prefetchSpeech(); };
+  if (performance.now() - V.lastEnd > 1500) V.speakingSince = performance.now();  // a new stretch of speech begins
+  V.recent.push({ text: item.text, t: performance.now() }); V.recent = V.recent.slice(-8);
   V.playing = src; src.start(); voiceState("speaking");
   prefetchSpeech();
 }
