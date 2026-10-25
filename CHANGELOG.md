@@ -9,7 +9,24 @@
 - **Windows:** bring to front, minimise, maximise, close.
 - **Power:** lock; sleep, restart and shutdown (asked every time; restart and shutdown wait 60 s and
   can be cancelled).
-- **Screenshots, clipboard, notes, reminders** (reminders pop up as Windows notifications).
+- **Screenshots, clipboard, notes, reminders and timers** (they pop up as Windows notifications with a
+  sound; "10 seconds" means 10 seconds).
+- **Exact calculator:** every calculation, from `11*2` to a 49-digit product, compound interest, doses or
+  engineering formulas, goes through an exact calculator instead of the model's guess. Whole numbers of
+  any length are exact, decimals have no rounding error, and maths functions use 40 digits.
+- **Voice mode:** talk to Sprout and it answers aloud in the same window, with both sides in the chat.
+  It runs fully offline on the CPU beside the same model. There are 12 natural male and female voices
+  with Preview in Settings, and you can interrupt it by talking.
+- **Sprout knows who made it:** "Who created you?" now answers with the owner's name, not Google.
+- **Python sandbox:** for anything that needs a little program (dates, durations, conversions,
+  sorting, counting, text), Sprout writes and runs Python in a locked-down sandbox (Pydantic Monty):
+  no files, internet or programs, 5 seconds at most.
+- **Plug-ins and memory:** Sprout can use MCP plug-ins, the common plug-in format for AI tools, with
+  its own approval rules on each. The first is **Memory**: Sprout remembers lasting facts you tell
+  it across chats. Each save is approved, and "forget …" shows exactly what will go.
+- **Undo and cancel:** "undo that", "put the volume back", "cancel the tea timer", "never mind the
+  shutdown" or "clear all my reminders" reverse what Sprout did earlier. The card says exactly what will be
+  undone. Files are never deleted; for a screenshot or note Sprout gives its path.
 - **Security:**
   - an approval card for every action, saying exactly what will happen;
   - fixed, checked actions, with no scripts, shells or programs run from files;
@@ -23,6 +40,11 @@
   itself.
 - **Announced actions without doing them** ("Bluetooth is now off" with no action). Commands now always
   go through a tool.
+- **A declined action reported as done** ("Shutdown cancelled." after you declined the card). When you
+  decline, Sprout now says "Okay, not done" in fixed words.
+- **Timers:** a 10-second timer became 10 minutes. The duration you type now wins.
+- **Wrong arithmetic:** 876 × 88894 was answered 77,868,972 (it's 77,871,144). Now calculated exactly;
+  simple sums no longer pause to "think" (11 × 2: 23 s → 3 s).
 - **Reads more:** what's open in each window (e.g. the file in VS Code), installed games, and Sprout's
   own memory use labelled as Sprout.
 

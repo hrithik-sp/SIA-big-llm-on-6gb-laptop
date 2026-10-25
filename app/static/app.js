@@ -10,7 +10,6 @@ const icon = (id, cls) => {
 };
 const MAX_DOC_CHARS = 45000;      // ~11k tokens: leaves room for the answer in the 16k context
 const MAX_IMG_SIDE = 1600;
-
 const S = {
   config: null, modes: {}, mode: "chat", model: null, chat: null, chats: [],
   attachments: [], abort: null, streaming: false, status: null, failures: 0, lastWake: 0, lastSpeed: null, settings: null,
@@ -129,6 +128,17 @@ function renderSettings() {
   $("#set-actions").checked = !!st.laptop_actions;
   $("#set-actions").disabled = !st.laptop_access;
   if (document.activeElement !== $("#set-name")) $("#set-name").value = st.user_name || "";
+  $("#set-pronouns").value = st.pronouns || "";
+  const sv = $("#set-voice");
+  if (st.voices && sv.options.length !== st.voices.length) {  // best first within each group (Kokoro's grades)
+    sv.innerHTML = "";
+    for (const [gender, label] of [["male", "Male"], ["female", "Female"]]) {
+      const g = el("optgroup"); g.label = label;
+      for (const v of st.voices.filter((x) => x.gender === gender)) { const o = el("option", null, `${v.name} (${v.accent})`); o.value = v.id; g.append(o); }
+      sv.append(g);
+    }
+  }
+  sv.value = st.voice_name || "am_michael";
   const al = $("#set-allowed"); al.innerHTML = "";
   for (const id of st.always_allow) {
     const tool = st.tools.find((t) => t.id === id); if (!tool) continue;
@@ -442,7 +452,7 @@ async function stream() {
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" }, signal: S.abort.signal,
-      body: JSON.stringify({ mode: S.mode, model: S.model, think: $("#think").checked, messages: buildApiMessages(), library: "library" }),
+      body: JSON.stringify({ mode: S.mode, model: S.model, think: $("#think").checked, messages: buildApiMessages(), library: "library", voice: V.on }),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
     const reader = r.body.getReader(), dec = new TextDecoder();
@@ -458,15 +468,15 @@ async function stream() {
         const ev = JSON.parse(line.slice(6));
         if (ev.type === "meta") { model = ev.model; am.sources = ev.sources || []; paint(); continue; }
         if (ev.type === "error") throw new Error(ev.error);
-        if (ev.type === "tool_request") { wait.remove(); askPermission(v, ev); continue; }
-        if (ev.type === "tool") { am.tools.push({ label: ev.label, status: ev.status }); toolNote(v, ev); continue; }
+        if (ev.type === "tool_request") { wait.remove(); askPermission(v, ev); voiceFiller(am, "I need your OK on screen."); continue; }
+        if (ev.type === "tool") { am.tools.push({ label: ev.label, status: ev.status }); toolNote(v, ev); voiceFiller(am); continue; }
         if (ev.type === "done") continue;
         if (ev.timings) timings = ev.timings;
         const delta = ev.choices && ev.choices[0] && ev.choices[0].delta;
         if (!delta) continue;
         if (tFirst == null && (delta.content || delta.reasoning_content)) { tFirst = performance.now(); wait.remove(); }
         if (delta.reasoning_content) am.reasoning += delta.reasoning_content;
-        if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; }
+        if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; voiceFeed(delta.content); }
         paint();
       }
     }
@@ -477,6 +487,8 @@ async function stream() {
     clearInterval(waitTimer); wait.remove();
     v.d.classList.remove("live");
     S.streaming = false; $("#send").hidden = false; $("#stop").hidden = true; busy(false);
+    if (am.error) { V.pending = ""; } else voiceFlush();
+    if (V.on && !V.playing && !V.say.length) voiceState("idle");
   }
   if (am.reasoning) am.think_s = ((tThinkEnd || performance.now()) - (tFirst || t0)) / 1000;
   const parts = [modelName(model)];
@@ -518,6 +530,158 @@ function toolNote(v, ev) {
   v.answer.before(n);
 }
 
+// ------------------------------------------------------------------ voice mode (app/voice.py)
+// The microphone is captured with the browser's echo cancellation, so Sprout's own voice is removed and
+// the user can interrupt it by talking. Audio goes to the backend (VAD + speech recognition); what the
+// user said is sent as a normal message, and the reply is spoken sentence by sentence while it streams.
+const V = { on: false, starting: false, ctx: null, mic: null, node: null, sendQ: [], sending: false,
+  events: null, say: [], pending: "", gen: 0, playing: null, fetching: false, queuedText: null };
+
+function voiceState(state) {  // idle | hearing | speaking: the mic button shows it
+  document.body.classList.toggle("voice-hearing", state === "hearing");
+  document.body.classList.toggle("voice-speaking", state === "speaking");
+  $("#input").placeholder = !V.on ? "Ask Sprout…" : state === "speaking" ? "Speaking… (talk to interrupt)"
+    : state === "hearing" ? "Listening…" : S.streaming ? "Thinking…" : "Talk to Sprout, or type";
+}
+async function toggleVoice() {
+  if (V.starting) return;
+  if (V.on) return stopVoice();
+  V.starting = true; $("#voice").disabled = true; toast("Getting voice ready…", 15000);
+  try {
+    await post("/api/voice/start");
+    V.mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    V.ctx = new AudioContext();
+    await V.ctx.audioWorklet.addModule("/static/voice-worklet.js");
+    V.node = new AudioWorkletNode(V.ctx, "sprout-capture");
+    V.node.port.onmessage = (e) => { V.sendQ.push(e.data); pumpAudio(); };
+    V.ctx.createMediaStreamSource(V.mic).connect(V.node);
+    V.on = true; $("#voice").setAttribute("aria-pressed", "true");
+    voiceEvents(); voiceState("idle"); toast("Voice on. Just talk; tap the mic again to stop.", 3500);
+    wake();
+  } catch (e) {
+    toast(e.name === "NotAllowedError" ? "Sprout needs the microphone: allow it when asked, then try again." : `Voice mode couldn't start: ${e.message}`, 6000);
+    await stopVoice();
+  } finally { V.starting = false; $("#voice").disabled = false; }
+}
+async function stopVoice() {
+  V.on = false; V.gen++;
+  if (V.events) V.events.abort();
+  if (V.playing) { try { V.playing.stop(); } catch {} V.playing = null; }
+  if (V.mic) V.mic.getTracks().forEach((t) => t.stop());
+  if (V.ctx) V.ctx.close().catch(() => {});
+  Object.assign(V, { ctx: null, mic: null, node: null, sendQ: [], say: [], pending: "", events: null });
+  $("#voice").setAttribute("aria-pressed", "false"); voiceState("idle");
+  await post("/api/voice/stop").catch(() => {});
+}
+async function pumpAudio() {  // one request at a time keeps the audio in order
+  if (V.sending) return;
+  V.sending = true;
+  while (V.on && V.sendQ.length) {
+    const chunks = V.sendQ.splice(0, V.sendQ.length), n = chunks.reduce((a, c) => a + c.byteLength, 0);
+    const buf = new Uint8Array(n); let o = 0;
+    for (const c of chunks) { buf.set(new Uint8Array(c), o); o += c.byteLength; }
+    await fetch("/api/voice/audio", { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: buf }).catch(() => {});
+  }
+  V.sending = false;
+}
+async function voiceEvents() {
+  V.events = new AbortController();
+  try {
+    const r = await fetch("/api/voice/events", { method: "POST", signal: V.events.signal });
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true }); let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+        if (line.startsWith("data: ")) onVoiceEvent(JSON.parse(line.slice(6)));
+      }
+    }
+  } catch (e) { if (V.on && e.name !== "AbortError") toast("Voice connection lost; tap the mic to restart.", 5000); }
+}
+function onVoiceEvent(ev) {
+  if (ev.type === "speech_start") {
+    if (V.playing || V.say.length || S.streaming) bargeIn();  // the user talks over Sprout: Sprout stops
+    voiceState("hearing");
+  } else if (ev.type === "transcript") {
+    voiceState("idle"); askByVoice(ev.text);
+  } else if (ev.type === "speech_end") { voiceState(V.playing ? "speaking" : "idle"); }
+  else if (ev.type === "error") toast(ev.error, 5000);
+}
+async function previewVoice() {
+  const btn = $("#voice-preview"); btn.disabled = true; btn.textContent = "Loading…";
+  try {
+    const r = await fetch("/api/voice/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voice: $("#set-voice").value }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+    const ctx = V.ctx || new AudioContext();
+    const src = ctx.createBufferSource(); src.buffer = await ctx.decodeAudioData(await r.arrayBuffer());
+    src.connect(ctx.destination); src.start();
+    src.onended = () => { if (ctx !== V.ctx) ctx.close(); };
+  } catch (e) { toast(`Couldn't play the voice: ${e.message}`); }
+  finally { btn.disabled = false; btn.textContent = "Preview"; }
+}
+function bargeIn() {
+  V.gen++; V.say = []; V.pending = "";
+  if (V.playing) { try { V.playing.stop(); } catch {} V.playing = null; }
+  if (S.streaming) stop();
+}
+async function askByVoice(text) {
+  for (let i = 0; i < 40 && S.streaming; i++) await new Promise((r) => setTimeout(r, 50));  // let a stopped reply finish
+  if (S.streaming) return;
+  $("#input").value = text; autosize();
+  send();
+}
+// speaking: complete sentences go out as soon as they're written; the next is fetched while one plays
+function voiceFeed(delta) {
+  if (!V.on) return;
+  V.pending += delta;
+  const re = /^([\s\S]*?[.!?…:;](?=\s)|[\s\S]*?\n)/;
+  let m;
+  while ((m = V.pending.match(re)) && m[1].trim().length >= 2) {
+    queueSpeech(m[1]); V.pending = V.pending.slice(m[1].length);
+  }
+}
+// while a tool runs, a person would say "one sec" instead of going silent (once per reply, before any answer)
+const FILLERS = ["One sec.", "Let me check.", "Okay, one moment.", "Sure, one second."];
+function voiceFiller(am, text) {
+  if (!V.on || am.filled || am.answer) return;
+  am.filled = true;
+  queueSpeech(text || FILLERS[Math.floor(Math.random() * FILLERS.length)]);
+}
+function voiceFlush() { if (V.on && V.pending.trim()) queueSpeech(V.pending); V.pending = ""; }
+function queueSpeech(text) {
+  text = text.replace(/```[\s\S]*?```/g, " ").trim();
+  if (!/\w/.test(text)) return;
+  V.say.push({ text, gen: V.gen, audio: null });
+  prefetchSpeech(); playNext();
+}
+async function prefetchSpeech() {
+  if (V.fetching) return;
+  V.fetching = true;
+  try {
+    for (;;) {
+      const item = V.say.find((x) => !x.audio && x.gen === V.gen);
+      if (!item || V.say.filter((x) => x.audio).length >= 2) break;  // keep at most two sentences ready
+      const r = await fetch("/api/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: item.text }) });
+      item.audio = r.status === 200 && V.ctx ? await V.ctx.decodeAudioData(await r.arrayBuffer()).catch(() => "skip") : "skip";
+      playNext();
+    }
+  } finally { V.fetching = false; }
+}
+function playNext() {
+  if (!V.on || V.playing || !V.ctx) return;
+  V.say = V.say.filter((x) => x.gen === V.gen);
+  const item = V.say[0];
+  if (!item) { voiceState("idle"); return; }
+  if (!item.audio) return;  // still being made
+  V.say.shift();
+  if (item.audio === "skip") { playNext(); prefetchSpeech(); return; }
+  const src = V.ctx.createBufferSource(); src.buffer = item.audio; src.connect(V.ctx.destination);
+  src.onended = () => { if (V.playing === src) V.playing = null; playNext(); prefetchSpeech(); };
+  V.playing = src; src.start(); voiceState("speaking");
+  prefetchSpeech();
+}
+
 // ------------------------------------------------------------------ library
 function renderLibrary(libs) {
   const lib = (libs || []).find((l) => l.name === "library");
@@ -550,6 +714,9 @@ function wire() {
   });
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
   $("#send").onclick = send;
+  $("#voice").onclick = toggleVoice;
+  $("#set-voice").onchange = (e) => saveSettings({ voice_name: e.target.value });
+  $("#voice-preview").onclick = previewVoice;
   $("#stop").onclick = stop;
   $("#new-chat").onclick = newChat;
   $("#plus").onclick = (e) => { e.stopPropagation(); openPopover($("#menu-plus"), $("#plus")); };
@@ -558,6 +725,7 @@ function wire() {
   $("#set-laptop").onchange = (e) => saveSettings({ laptop_access: e.target.checked });
   $("#set-actions").onchange = (e) => saveSettings({ laptop_actions: e.target.checked });
   $("#set-name").onchange = (e) => saveSettings({ user_name: e.target.value });
+  $("#set-pronouns").onchange = (e) => saveSettings({ pronouns: e.target.value });
   $("#status-pill").onclick = (e) => { e.stopPropagation(); pollStatus(); openPopover($("#panel-status"), $("#status-pill"), { above: false }); };
   $("#menu-plus").onclick = (e) => {
     const act = e.target.closest("button")?.dataset.act; if (!act) return;

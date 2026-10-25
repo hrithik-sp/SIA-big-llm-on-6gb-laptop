@@ -34,7 +34,9 @@ from pathlib import Path
 import psutil
 
 import actions
+import calc
 import games
+import sandbox
 
 APP = Path(__file__).resolve().parent
 GiB = 1024 ** 3
@@ -805,6 +807,39 @@ TOOLS = {
                        "Pass every move of the user to it, then tell the user its 'summary' in full (every letter's "
                        "result, the board, what's left); never invent feedback or a secret word.",
     },
+    "calculate": {
+        "fn": calc.calculate, "label": "Calculate", "auto": True,  # reads nothing from the laptop: no card
+        "reads": "nothing from the laptop (Sprout's exact calculator)",
+        "schema": {"type": "object", "properties": {
+            "expression": {"type": "string", "description":
+                "e.g. 876*88894, (1+0.05/12)**120, 15% * 2400, sqrt(2), 25!. Several steps separated by ; with "
+                "named values: 'dose = 15*72; dose/250'. No units or thousands commas. Operators + - * / // % ** "
+                "(^ works too). Functions: sqrt cbrt root(x,n) exp ln log(x) (natural) log(x,base) log10 log2 "
+                "sin cos tan asin acos atan atan2 (radians) sind cosd tand asind acosd atand (degrees) sinh cosh "
+                "tanh hypot factorial comb perm gcd lcm abs floor ceil round(x,digits) (half up) min max sum mean "
+                "median stdev pstdev variance; constants pi e tau."},
+            "format": {"type": "string", "enum": ["indian", "international", "words"],
+                       "description": "also write the result out: 'indian' = lakh/crore grouping (12,34,567) and "
+                                      "words; 'international' = 1,234,567 and million/billion words; 'words' = both"}},
+            "required": ["expression"]},
+        "description": "Exact calculator. Use it for EVERY calculation, even 11*2: whole numbers of any length are "
+                       "exact, fractions and money have no rounding error. Report its 'result' exactly as given.",
+    },
+    "run_python": {
+        "fn": sandbox.run_python, "label": "Run Python", "auto": True,  # sandboxed: no files, network or programs
+        "reads": "nothing from the laptop (a locked-down Python sandbox)",
+        "schema": {"type": "object", "properties": {
+            "code": {"type": "string", "description":
+                "A short Python program. The value of its last line is returned, and print() output too. "
+                "Available: math, datetime (local time), calendar, statistics, string, re, json, itertools, "
+                "collections, random; "
+                "exact(\"expression\") gives calculate's exact result as text, words(number, \"indian\" or "
+                "\"international\") spells a number. No files, internet, input() or installing packages."}},
+            "required": ["code"]},
+        "description": "Run a short Python program in a sandbox for anything that needs logic or data handling: dates "
+                       "and durations, unit conversions, sorting or counting lists, text processing, tables, "
+                       "multi-step calculations. Use calculate for a single formula.",
+    },
     # ---- actions: they change something, so each one is approved by the user first (see actions.py)
     "open": {
         "fn": actions.open_, "label": "Open", "action": True,
@@ -868,15 +903,29 @@ TOOLS = {
     },
     "reminder": {
         "fn": actions.reminder, "label": "Reminder", "action": True,
-        "does": "sets, lists or cancels a reminder shown as a Windows notification",
+        "does": "sets, lists or cancels a reminder or timer, shown as a Windows notification with a sound",
         "schema": {"type": "object", "properties": {
             "action": {"type": "string", "enum": ["set", "list", "cancel"]},
             "text": {"type": "string", "description": "for set: what to remind about"},
-            "minutes": {"type": "number", "description": "for set: minutes from now"},
+            "seconds": {"type": "number", "description": "for set: seconds from now (timers, e.g. 10); give "
+                                                         "seconds OR minutes, not both"},
+            "minutes": {"type": "number", "description": "for set: minutes from now (instead of seconds)"},
             "at": {"type": "string", "description": "for set, instead of minutes: a time like 17:30 or 5:30 pm"},
-            "id": {"type": "string", "description": "for cancel: the reminder's id from list"}},
+            "id": {"type": "string", "description": "for cancel: the reminder's id from list (or give text: "
+                                                    "words of the reminder, e.g. oven; 'all' for every pending one; or neither for the latest)"}},
             "required": ["action"]},
-        "description": "Set a reminder (in N minutes or at a time), list pending reminders, or cancel one.",
+        "description": "Set a reminder or timer (in N seconds, N minutes, or at a time), list pending ones, or "
+                       "cancel one. It pops up as a Windows notification with a sound.",
+    },
+    "undo": {
+        "fn": actions.undo, "label": "Undo", "action": True,
+        "does": "puts back something Sprout did earlier in this session (a setting's old value, closes what it "
+                "opened, cancels a timer or shutdown, restores the clipboard)",
+        "schema": {"type": "object", "properties": {
+            "what": {"type": "string", "description": "'last' for the most recent action, or words naming it "
+                                                      "(e.g. volume, bluetooth, theme, spotify, timer, shutdown)"}}},
+        "description": "Undo or cancel something Sprout did earlier: put a setting back, close an app or file it "
+                       "opened, cancel a timer/reminder or a restart/shutdown, restore the clipboard.",
     },
     "clipboard_text": {
         "fn": clipboard_text, "label": "Read the clipboard",
@@ -885,6 +934,100 @@ TOOLS = {
         "description": "Read the text the user has currently copied to the clipboard.",
     },
 }
+
+
+# ---- MCP plug-ins (mcp_host.py, mcp.json): their tools join TOOLS under <server>_<tool>
+MCP = {"host": None}
+
+
+def register_mcp(host):
+    """Add the plug-ins' allowed tools. Each keeps its policy: auto (no card), read, action, or ask (a card every
+    time, never always-allowed). 'requires' says which Settings switch it needs: access, actions or none."""
+    MCP["host"] = host
+    for name, t in host.tools.items():
+        spec = host.servers[t["server"]].spec
+        TOOLS[name] = {
+            "fn": (lambda n: lambda **kw: host.call(n, kw))(name), "label": t["tool"], "mcp": t["server"],
+            "auto": t["policy"] == "auto", "action": t["policy"] in ("action", "ask"),
+            "ask": t["policy"] == "ask", "requires": t["rule"].get("requires", spec.get("requires")),
+            "reads": "", "does": t["rule"].get("does", ""), "schema": t["schema"], "description": t["description"]}
+    if "memory" in host.servers:
+        register_forget()
+
+
+FORGET_SKIP = {"my", "the", "a", "an", "about", "that", "this", "name", "names", "i", "me", "forget", "all",
+               "everything", "you", "know", "remember", "of", "please", "s", "is", "what"}
+
+
+def _memory_rows():
+    host = MCP["host"]
+    srv = host.servers.get("memory") if host else None
+    if not srv:
+        return None, []
+    path = Path(srv._expand(srv.spec.get("env", {}).get("MEMORY_FILE_PATH", "")))
+    try:
+        return path, [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+    except (OSError, ValueError):
+        return path, []
+
+
+def _forget_plan(what):
+    """Which remembered facts match the words (all of them must appear): whole entities whose name matches or
+    whose every fact matches, else the single matching facts."""
+    words = [w for w in re.findall(r"[a-z0-9]+", str(what).lower()) if w not in FORGET_SKIP]
+    _, rows = _memory_rows()
+    entities, facts = [], []
+    for r in rows:
+        if r.get("type") != "entity" or not words:
+            continue
+        hits = [o for o in r.get("observations", [])
+                if all(w in f"{r['name']} {r.get('entityType', '')} {o}".lower() for w in words)]
+        if all(w in r["name"].lower() for w in words) or (hits and len(hits) == len(r.get("observations", []))):
+            entities.append(r["name"])
+        elif hits:
+            facts.append({"entityName": r["name"], "observations": hits})
+    return entities, facts
+
+
+def forget(what):
+    entities, facts = _forget_plan(what)
+    if not entities and not facts:
+        _, rows = _memory_rows()
+        return {"error": "nothing remembered matches that; nothing was forgotten",
+                "remembered": [r.get("name") for r in rows if r.get("type") == "entity"]}
+    host = MCP["host"]
+    if entities:
+        host.servers["memory"].call("delete_entities", {"entityNames": entities})
+    if facts:
+        host.servers["memory"].call("delete_observations", {"deletions": facts})
+    left = _forget_plan(what)
+    return {"forgot": entities + [f"{f['entityName']}: {o}" for f in facts for o in f["observations"]],
+            "verified": not left[0] and not left[1]}
+
+
+def forget_label(what):
+    entities, facts = _forget_plan(what)
+    parts = [f"everything about {e}" for e in entities] + [f"{f['entityName']}: {o}" for f in facts
+                                                           for o in f["observations"]]
+    return "Forget: " + "; ".join(parts) if parts else "Forget (nothing matches)"
+
+
+def register_forget():
+    """Sprout's own 'forget' on top of the Memory plug-in: the user names what to forget in plain words and the
+    card lists exactly which stored facts match (the model once guessed a fact's wording, nothing matched, and
+    it still said it had forgotten)."""
+    TOOLS["forget"] = {
+        "fn": forget, "label": "Forget", "action": True, "requires": None, "plugin": "memory",
+        "does": "deletes the matching facts from Sprout's memory",
+        "schema": {"type": "object", "properties": {"what": {"type": "string", "description":
+                   "the person, thing or fact to forget, in the user's words (e.g. 'my sister', 'HP Victus')"}},
+                   "required": ["what"]},
+        "description": "Forget remembered facts about a person, thing or topic (the user approves the exact list)."}
+
+
+def always_ask(name):
+    """Tools that need a fresh approval every time (never 'Always allow')."""
+    return bool(TOOLS.get(name, {}).get("ask"))
 
 
 def openai_tools(names=None):
@@ -902,9 +1045,36 @@ def run(name, args_json):
             raise ValueError("arguments must be an object")
         allowed = set(TOOLS[name]["schema"].get("properties", {}))
         args = {k: v for k, v in args.items() if k in allowed}  # drop anything unexpected
-        return TOOLS[name]["fn"](**args)
+        if name == "reminder":
+            args = actions.fix_reminder_args(args)  # the duration the user stated wins
+        result = TOOLS[name]["fn"](**args)
+        if TOOLS[name].get("action") and name != "undo" and isinstance(result, dict) and "error" not in result:
+            actions.record(name, args, result)  # so it can be undone later
+        return result
     except Exception as e:  # report the failure to the model instead of crashing the chat
         return {"error": f"{type(e).__name__}: {e}"}
+
+
+def nothing_to_do(name, args_json):
+    """An error result when a cancel or undo has nothing to act on, so no card is shown for it."""
+    try:
+        args = json.loads(args_json or "{}")
+    except ValueError:
+        return None
+    if name == "forget" and isinstance(args, dict) and not any(_forget_plan(args.get("what", ""))):
+        return forget(args.get("what", ""))  # nothing matches: say so without a card
+    if TOOLS.get(name, {}).get("mcp") and isinstance(args, dict):  # e.g. a blocked shortcut: refused, no card
+        refused = MCP["host"].check(name, args)
+        if refused:
+            return {"error": refused + "; nothing was done"}
+    if name == "reminder" and str(args.get("action")) == "cancel":
+        picks, pending = actions._find_reminders(args.get("id", ""), args.get("text", ""))
+        if not picks:
+            return {"error": "no matching pending reminder; nothing was cancelled",
+                    "pending": [r["text"] for r in pending]}
+    if name == "undo" and not actions._undo_candidate(args.get("what", "last")):
+        return {"error": "nothing Sprout did in this session matches that; nothing was undone"}
+    return None
 
 
 def describe(name, args_json):
@@ -916,6 +1086,12 @@ def describe(name, args_json):
         args = json.loads(args_json or "{}")
     except ValueError:
         args = {}
+    if name == "forget":
+        return forget_label(args.get("what", "") if isinstance(args, dict) else "")
+    if t.get("mcp"):
+        return MCP["host"].describe(name, args if isinstance(args, dict) else {})
+    if name == "reminder" and isinstance(args, dict):
+        args = actions.fix_reminder_args(args)  # the card shows what will really be set
     extra = ""
     if name == "recent_files":
         extra = f" ({args.get('folder', 'downloads')}, last {args.get('days', 1)} day(s))"
@@ -952,9 +1128,24 @@ def describe(name, args_json):
         return f"Copy {len(str(args.get('text', '')))} characters to the clipboard"
     if name == "save_note":
         return f"Save a note: Documents\\Sprout\\{args.get('name', 'note')}"
+    if name == "calculate":
+        expr = str(args.get("expression", ""))
+        return "Calculate: " + (expr if len(expr) <= 80 else expr[:77] + "...")
+    if name == "undo":
+        return actions.undo_description(args.get("what", "last"))
+    if name == "reminder" and str(args.get("action")) == "cancel":
+        picks, _ = actions._find_reminders(args.get("id", ""), args.get("text", ""))  # the card names what goes
+        if len(picks) > 1:
+            return f"Cancel all {len(picks)} reminders: " + ", ".join(r["text"] for r in picks)
+        return f"Cancel the reminder: {picks[0]['text']}" if picks else "Cancel a reminder (none matches)"
     if name == "reminder":
         if str(args.get("action")) == "set":
-            when = f"in {args['minutes']} min" if args.get("minutes") is not None else f"at {args.get('at', '?')}"
+            if args.get("seconds") is not None or args.get("minutes") is not None:
+                total = (float(args["seconds"]) if args.get("seconds") is not None
+                         else 60 * float(args["minutes"]))
+                when = f"in {total:.0f} s" if total < 120 else f"in {total / 60:.0f} min"
+            else:
+                when = f"at {args.get('at', '?')}"
             return f"Remind you {when}: {args.get('text', '')}"
         return f"Reminders: {args.get('action', '?')}"
     return t["label"] + extra

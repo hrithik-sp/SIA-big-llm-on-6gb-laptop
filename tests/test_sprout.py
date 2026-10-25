@@ -1,4 +1,5 @@
 """Tests for app/server.py logic that needs no model: chunking, extraction, request building."""
+import json
 import os
 import sys
 import unittest
@@ -132,8 +133,8 @@ class SettingsAndTools(unittest.TestCase):
     def test_laptop_access_off_removes_tools(self):
         server.save_settings({**server.DEFAULT_SETTINGS, "laptop_access": False})
         body, _, _ = server.build_request({"mode": "chat", "messages": self.msgs})
-        # only the game referee stays: it reads nothing from the laptop
-        self.assertEqual([t["function"]["name"] for t in body["tools"]], ["word_game"])
+        # only the game referee, the calculator and the sandbox stay: they read nothing from the laptop
+        self.assertEqual([t["function"]["name"] for t in body["tools"]], ["word_game", "calculate", "run_python"])
         self.assertNotIn(server.TOOL_GUIDE, body["messages"][0]["content"])
 
     def test_bad_settings_are_sanitised(self):
@@ -322,6 +323,17 @@ class SettingsAndTools(unittest.TestCase):
             self.assertNotEqual(one["saved"], two["saved"])
             self.assertEqual(server.Path(one["saved"]).read_text(encoding="utf-8"), "first")
             self.assertTrue(bad["saved"].startswith(str(server.Path(d, "Sprout"))) and bad["saved"].endswith(".txt"))
+        t = a.set_reminder("Timer", seconds=10)  # "set a timer for 10 seconds" once became 10 minutes
+        self.assertEqual(t["in"], "10 seconds")
+        self.assertEqual(a.cancel_reminder(a.list_reminders()["reminders"][-1]["id"])["cancelled"], "Timer")
+        self.assertEqual(server.tools.describe("reminder", '{"action": "set", "text": "Timer", "seconds": 10}'),
+                         "Remind you in 10 s: Timer")
+        both = a.set_reminder("oven", minutes=1, seconds=30)  # the model sent both for "30 seconds"
+        self.assertEqual(both["in"], "30 seconds")
+        a.cancel_reminder(a.list_reminders()["reminders"][-1]["id"])
+        self.assertEqual(server.tools.describe("reminder", '{"action": "set", "text": "oven", "minutes": 1, "seconds": 30}'),
+                         "Remind you in 30 s: oven")
+        self.assertIn("seconds", server.tools.TOOLS["reminder"]["schema"]["properties"])
         r = a.set_reminder("stand up", at="5:30 pm")
         self.assertIn("5:30 PM", r["at"])
         self.assertIn("error", a.set_reminder("x", at="25:99"))
@@ -339,6 +351,103 @@ class SettingsAndTools(unittest.TestCase):
         for q in ("how do I turn off bluetooth?", "is my bluetooth on?", "make me a study plan", "find my resume",
                   "what time is it", "explain how TCP works", "write an email to my prof", "I opened the file"):
             self.assertFalse(server.wants_action(q), q)
+
+    def test_undo_and_cancel(self):
+        """Only harmless actions here (a timer set, then undone): nothing on the laptop changes."""
+        a = server.tools.actions
+        a.HISTORY.clear()
+        a.USER_TEXT["text"] = "set a timer for 10 minutes for the oven"
+        r = server.tools.run("reminder", '{"action": "set", "text": "oven", "minutes": 10}')
+        self.assertIn("reminder", r)
+        self.assertEqual(server.tools.describe("undo", '{"what": "last"}'), "Undo: cancel the reminder 'oven'")
+        out = a.undo("timer")  # matched by words, not just "last"
+        self.assertEqual(out["result"], {"cancelled": "oven"})
+        self.assertIn("error", a.undo("last"))  # nothing left to undo
+        a.HISTORY.append({"n": 9, "tool": "screenshot", "args": {}, "undo": None, "done": False, "label": "screenshot {}",
+                          "desc": "Sprout doesn't delete files; it's at C:\\x.png"})
+        self.assertIn("can't be undone", a.undo("last")["error"])
+        a.record("control", {"setting": "volume", "value": "30"}, {"before": {"volume_pct": 50, "muted": False}})
+        self.assertEqual(a.undo_description("volume"), "Undo: volume back to 50%")  # described, not executed
+        # cancel a reminder by its words, or the latest one
+        a.set_reminder("check the oven", minutes=5)
+        a.set_reminder("call mom", minutes=9)
+        self.assertEqual(a.cancel_reminder(text="the oven")["cancelled"], "check the oven")
+        self.assertEqual(a.cancel_reminder()["cancelled"], "call mom")
+        # the model has passed the name as the id ("tea" or a made-up id plus the text): still found
+        a.set_reminder("tea", minutes=10)
+        self.assertEqual(server.tools.describe("reminder", '{"action": "cancel", "id": "tea"}'),
+                         "Cancel the reminder: tea")
+        self.assertEqual(a.cancel_reminder(id="tea")["cancelled"], "tea")
+        a.set_reminder("tea", minutes=10)
+        self.assertEqual(a.cancel_reminder(id="r99", text="the tea timer")["cancelled"], "tea")
+        self.assertIn("error", a.cancel_reminder(id="r99"))  # an unknown id alone never cancels the latest
+        a.set_reminder("tea", minutes=10)
+        a.set_reminder("oven", minutes=20)
+        self.assertEqual(server.tools.describe("reminder", '{"action": "cancel", "text": "all"}'),
+                         "Cancel all 2 reminders: tea, oven")
+        self.assertEqual(a.cancel_reminder(text="all")["cancelled"], ["tea", "oven"])
+        # nothing to cancel or undo: answered without an approval card
+        self.assertIn("error", server.tools.nothing_to_do("reminder", '{"action": "cancel", "text": "tea"}'))
+        self.assertIn("error", server.tools.nothing_to_do("undo", '{"what": "brightness"}'))
+        a.set_reminder("tea", minutes=10)
+        self.assertIsNone(server.tools.nothing_to_do("reminder", '{"action": "cancel", "text": "tea"}'))
+        a.cancel_reminder(text="tea")
+        for said in ("stop the tea timer", "never mind the oven reminder", "don't remind me", "abort the restart"):
+            self.assertTrue(server.wants_action(said), said)
+        for said in ("how do I remove an alarm on my phone?", "stop talking", "delete this file"):
+            self.assertFalse(server.wants_action(said), said)
+        self.assertTrue(server.wants_action("undo that") and server.wants_action("put the volume back"))
+        self.assertFalse(server.wants_action("can you undo things?"))
+        a.HISTORY.clear()
+
+    def test_calculator(self):
+        """Exact answers the model got wrong in a real chat, and nothing but arithmetic is accepted."""
+        calc = server.tools.calc.calculate
+        self.assertEqual(calc("876*88894")["result"], "77871144")  # the model said 77,868,972
+        self.assertEqual(calc("78*87965*4231589659775*875549663211459*98874488899999")["result"],
+                         str(78 * 87965 * 4231589659775 * 875549663211459 * 98874488899999))
+        self.assertEqual(calc("0.1+0.2")["result"], "0.3")  # exact decimals, no binary-float error
+        self.assertEqual(calc("1/3+1/6")["result"], "0.5")
+        self.assertEqual(calc("15% * 2400")["result"], "360")
+        self.assertEqual(calc("17 % 5")["result"], "2")
+        self.assertEqual(calc("2^10")["result"], "1024")
+        self.assertEqual(calc("25!")["result"], "15511210043330985984000000")
+        self.assertEqual(calc("round(2.675, 2)")["result"], "2.68")  # half up, as on receipts
+        self.assertEqual(calc("r = 0.05/12; round(10000*(1+r)**120, 2)")["result"], "16470.09")
+        self.assertTrue(calc("sqrt(2)")["result"].startswith("1.41421356237309504880"))
+        self.assertEqual(calc("sind(30)")["result"], "0.5")
+        for bad in ('__import__("os").system("calc")', 'open("x")', "().__class__", "lambda: 1", "2**10000000",
+                    "1/0", "9**9**9"):
+            self.assertIn("error", calc(bad), bad)
+        # words and grouping: the model wrote 266,473,922,476,416 as "twenty-six quadrillion ..."
+        w = calc("7726736*38837*888", "words")
+        self.assertEqual(w["indian_grouping"], "26,64,73,92,24,76,416")
+        self.assertEqual(w["words_international"], "two hundred sixty-six trillion, four hundred seventy-three billion, "
+                         "nine hundred twenty-two million, four hundred seventy-six thousand, four hundred sixteen")
+        self.assertEqual(w["words_indian"], "two crore sixty-six lakh forty-seven thousand three hundred ninety-two "
+                         "crore, twenty-four lakh, seventy-six thousand, four hundred sixteen")
+        self.assertTrue(w["words_indian_traditional"].startswith("twenty-six neel, sixty-four kharab, seventy-three arab"))
+        self.assertEqual(calc("12345678", "indian")["words_indian"],
+                         "one crore, twenty-three lakh, forty-five thousand, six hundred seventy-eight")
+        self.assertEqual(calc("100000", "indian")["indian_grouping"], "1,00,000")
+        self.assertEqual(calc("-2500.75", "international")["words_international"],
+                         "minus two thousand, five hundred point seven five")
+        for said in ("give in indian numeric system", "in words"):
+            self.assertTrue(server.is_math(said), said)
+        self.assertFalse(server.is_math("write a story in the indian style"))
+        # the tool reads nothing, so it needs no card and works with laptop access off
+        self.assertTrue(server.tools.TOOLS["calculate"].get("auto"))
+        self.assertEqual(server.tools.describe("calculate", '{"expression": "11*2"}'), "Calculate: 11*2")
+        for said in ("11*2", "calculate and tell 876*88894", "what is 15% of 2400",
+                     "I invest 50000 at 7% for 10 years, how much will I have?"):
+            self.assertTrue(server.is_math(said), said)
+        for said in ("my meeting is on 23/10/2026", "call me at 98765-43210", "set the volume to 30%",
+                     "how many tabs do I have open?", "remind me in 10 minutes"):
+            self.assertFalse(server.is_math(said), said)
+        body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "11*2"}]})
+        self.assertEqual(body["tool_choice"], "required")
+        self.assertFalse(body["chat_template_kwargs"]["enable_thinking"])  # a bare sum needs no thinking
+        self.assertIn("calculate tool", body["messages"][-1]["content"])
 
     def test_actions_switch_and_cards(self):
         server.save_settings({**server.DEFAULT_SETTINGS, "laptop_actions": False})
@@ -463,6 +572,136 @@ class Safety(unittest.TestCase):
     def test_presets_cap_ram_hungry_defaults(self):
         self.assertLessEqual(server.COMMON["cache-ram"], 2048)   # default would be 8192 MiB
         self.assertEqual(server.COMMON["parallel"], 1)
+
+
+class Voice(unittest.TestCase):
+    """Voice mode without a microphone: speakable text, the voice list, the spoken-style request."""
+
+    def test_speakable_text(self):
+        sp = server.voice.speakable
+        self.assertEqual(sp("Your battery is at **82%** & charging."), "Your battery is at 82 percent and charging.")
+        self.assertEqual(sp("Run `pip install x`; see [docs](https://x.y)."), "Run pip install x; see docs.")
+        self.assertEqual(sp("- one\n- two"), "one two")
+        self.assertEqual(sp("```python\nprint(1)\n```"), "")
+        self.assertEqual(sp("It's 23°C"), "It's 23 degrees Celsius")
+
+    def test_voice_list(self):
+        ids = server.voice.VOICE_IDS
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertIn(server.voice.DEFAULT_VOICE, ids)
+        self.assertTrue({"male", "female"} == {v["gender"] for v in server.voice.VOICES})
+        self.assertFalse({"am_adam", "am_onyx", "bf_lily"} & set(ids))  # D-graded voices are left out
+        if server.voice.available():  # every listed voice exists in the installed model
+            names = server.voice._speaker_ids()
+            self.assertTrue(set(ids) <= set(names), set(ids) - set(names))
+
+    def test_voice_request_and_setting(self):
+        import tempfile
+        orig = server.SETTINGS_FILE
+        with tempfile.TemporaryDirectory() as d:
+            server.SETTINGS_FILE = server.Path(d) / "settings.json"
+            try:
+                body, _, _ = server.build_request({"mode": "chat", "voice": True, "messages": [
+                    {"role": "user", "content": "plan my week and compare two options step by step"}]})
+                self.assertIn("Spoken reply, read aloud", body["messages"][-1]["content"])
+                self.assertFalse(body["chat_template_kwargs"]["enable_thinking"])  # no silent thinking pause
+                body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": "hi"}]})
+                self.assertNotIn("Spoken reply", body["messages"][-1]["content"])
+                self.assertEqual(server.load_settings()["voice_name"], "am_michael")
+            finally:
+                server.SETTINGS_FILE = orig
+
+
+class Plugins(unittest.TestCase):
+    """The MCP host and the Python sandbox, against a fake MCP server (nothing on the laptop is touched)."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        cfg = {"servers": {"fake": {
+            "command": sys.executable, "args": [os.path.join(os.path.dirname(__file__), "fake_mcp_server.py")],
+            "requires": "actions", "guide": "Fake guide.",
+            "tools": {
+                "Echo": {"policy": "read", "fixed": {"secret_flag": False}, "label": "Echo {text}"},
+                "Press": {"policy": "ask", "allowed": {"mode": ["a", "b"]}, "blocked": {"shortcut": ["win+r"]},
+                          "label": "Press {shortcut}"}}}}}
+        path = os.path.join(self.tmp.name, "mcp.json")
+        with open(path, "w") as f:
+            json.dump(cfg, f)
+        self.host = server.mcp_host.Host(path, self.tmp.name)
+        self.host.load()
+        self.before = dict(server.tools.TOOLS)
+        server.tools.register_mcp(self.host)
+
+    def tearDown(self):
+        self.host.stop()
+        server.tools.TOOLS.clear()
+        server.tools.TOOLS.update(self.before)
+        server.tools.MCP["host"] = None
+        self.tmp.cleanup()
+
+    def test_only_listed_tools_with_sprout_rules(self):
+        self.assertEqual(sorted(self.host.tools), ["fake_Echo", "fake_Press"])  # "Hidden" isn't in the config
+        self.assertNotIn("secret_flag", self.host.tools["fake_Echo"]["schema"]["properties"])  # fixed: not the model's
+        self.assertEqual(self.host.tools["fake_Press"]["schema"]["properties"]["mode"]["enum"], ["a", "b"])
+        out = json.loads(server.tools.run("fake_Echo", '{"text": "hi", "secret_flag": true}')["text"])
+        self.assertEqual(out, {"called": "Echo", "args": {"text": "hi", "secret_flag": False}})
+        self.assertIn("error", server.tools.nothing_to_do("fake_Press", '{"shortcut": "Win + R"}'))  # no card
+        self.assertIn("error", server.tools.run("fake_Press", '{"mode": "launch_executable"}'))
+        self.assertIsNone(server.tools.nothing_to_do("fake_Press", '{"shortcut": "ctrl+s"}'))
+        self.assertEqual(server.tools.describe("fake_Press", '{"shortcut": "ctrl+s"}'), "Press ctrl+s")
+        self.assertTrue(server.tools.always_ask("fake_Press") and not server.tools.always_ask("fake_Echo"))
+        self.assertTrue(server.tools.TOOLS["fake_Press"]["action"] and not server.tools.TOOLS["fake_Echo"]["action"])
+        # the tool list is cached: a second host doesn't need the servers to start
+        again = server.mcp_host.Host(os.path.join(self.tmp.name, "mcp.json"), self.tmp.name)
+        again.servers["fake"].list_tools = lambda: 1 / 0  # would fail if it were started
+        self.assertEqual(sorted(again.load()), ["fake_Echo", "fake_Press"])
+
+    def test_plugins_follow_the_settings_switches(self):
+        msgs = [{"role": "user", "content": "hello"}]
+        orig = server.SETTINGS_FILE
+        server.SETTINGS_FILE = server.Path(self.tmp.name) / "settings.json"
+        try:
+            server.save_settings({**server.DEFAULT_SETTINGS, "laptop_actions": True})
+            body, _, _ = server.build_request({"mode": "chat", "messages": [dict(m) for m in msgs]})
+            names = {t["function"]["name"] for t in body["tools"]}
+            self.assertTrue({"fake_Echo", "fake_Press", "run_python"} <= names)
+            self.assertIn("Fake guide.", body["messages"][0]["content"])
+            server.save_settings({**server.DEFAULT_SETTINGS, "laptop_access": False})
+            body, _, _ = server.build_request({"mode": "chat", "messages": [dict(m) for m in msgs]})
+            self.assertFalse({"fake_Echo", "fake_Press"} & {t["function"]["name"] for t in body["tools"]})
+        finally:
+            server.SETTINGS_FILE = orig
+
+    def test_card_text_for_lists(self):
+        self.assertEqual(server.mcp_host._flat([{"entityName": "Hrithik", "contents": ["likes tea", "codes at night"]}]),
+                         "Hrithik: likes tea; codes at night")
+
+    def test_forget_matches_what_is_stored(self):
+        rows = [{"type": "entity", "name": "Ananya", "entityType": "person", "observations": ["Hrithik's sister"]},
+                {"type": "entity", "name": "Hrithik S P", "entityType": "person",
+                 "observations": ["likes short answers", "uses an HP Victus laptop"]}]
+        orig = server.tools._memory_rows
+        server.tools._memory_rows = lambda: (None, rows)
+        try:
+            self.assertEqual(server.tools._forget_plan("my sister's name"), (["Ananya"], []))  # the whole person
+            self.assertEqual(server.tools._forget_plan("HP Victus"),
+                             ([], [{"entityName": "Hrithik S P", "observations": ["uses an HP Victus laptop"]}]))
+            self.assertEqual(server.tools.forget_label("my sister"), "Forget: everything about Ananya")
+            self.assertEqual(server.tools._forget_plan("my brother"), ([], []))
+        finally:
+            server.tools._memory_rows = orig
+
+    def test_sandbox(self):
+        run = server.tools.sandbox.run_python
+        self.assertEqual(run("7726736*38837*888")["result"], 266473922476416)
+        self.assertEqual(run("import datetime\n(datetime.date(2026, 11, 15) - datetime.date(2026, 10, 23)).days")["result"], 23)
+        self.assertEqual(run('exact("0.1+0.2")')["result"], "0.3")
+        self.assertTrue(run('words(100000, "indian")')["result"] == "one lakh")
+        self.assertIn("printed", run("print('hi')"))
+        for bad in ('open("C:/Windows/win.ini").read()', "import os\nos.listdir('C:/')", "import subprocess",
+                    "import socket"):
+            self.assertIn("error", run(bad), bad)
 
 
 if __name__ == "__main__":

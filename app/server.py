@@ -23,6 +23,7 @@ import http.server
 import io
 import json
 import os
+import queue
 import re
 import secrets
 import shutil
@@ -39,7 +40,9 @@ from pathlib import Path
 import numpy as np
 import psutil
 
+import mcp_host
 import tools
+import voice
 
 APP = Path(__file__).resolve().parent
 LLM = Path(os.environ.get("LLM_HOME") or Path.home() / "llm")  # llama.cpp, models, data (outside the repo)
@@ -136,6 +139,29 @@ def _kill_on_close_job():
 JOB = _kill_on_close_job() if os.name == "nt" else None
 
 
+def attach_to_job(p):
+    if JOB:
+        handle = ctypes.windll.kernel32.OpenProcess(0x1F0FFF, False, p.pid)
+        ctypes.windll.kernel32.AssignProcessToJobObject(JOB, handle)
+
+
+MCP_READY = threading.Event()
+
+
+def init_mcp():
+    """Load the MCP plug-ins in app/mcp.json (their tool lists are cached; servers start on first use)."""
+    try:
+        host = mcp_host.Host(APP / "mcp.json", DATA, on_spawn=attach_to_job)
+        host.load()
+        tools.register_mcp(host)
+        for name, err in host.errors.items():
+            print(f"MCP plug-in {name} unavailable: {err}")
+    except (OSError, ValueError) as e:
+        print(f"MCP plug-ins not loaded: {e}")
+    finally:
+        MCP_READY.set()
+
+
 def spawn(name, cmd):
     DATA.joinpath("logs").mkdir(parents=True, exist_ok=True)
     log = open(DATA / "logs" / f"{name}.log", "w", encoding="utf-8", errors="replace")
@@ -222,6 +248,7 @@ def preload(name):
         if CHAT.states().get(name) != "sleeping":
             CHAT.ensure(name)
         if name in MODEL_INFO:  # not the vision preset: image chats build a different prompt
+            MCP_READY.wait(60)  # the tool list must be final, or the pre-read prompt is wasted
             body, _, _ = build_request({"mode": "chat", "model": name, "think": False,
                                         "messages": [{"role": "user", "content": "hi"}]})
             body.pop("tool_choice", None)
@@ -580,7 +607,9 @@ def kb_list():
 
 # --------------------------------------------------------------------------- settings
 SETTINGS_FILE = DATA / "settings.json"
-DEFAULT_SETTINGS = {"laptop_access": True, "laptop_actions": True, "always_allow": [], "user_name": ""}
+DEFAULT_SETTINGS = {"laptop_access": True, "laptop_actions": True, "always_allow": [], "user_name": "",
+                    "voice_name": voice.DEFAULT_VOICE, "pronouns": ""}
+PRONOUNS = {"he/him": ("he", "his"), "she/her": ("she", "her"), "they/them": ("they", "their")}
 ACTIONS_LOG = DATA / "logs" / "actions.log"
 
 
@@ -619,6 +648,19 @@ def save_settings(st):
         SETTINGS_FILE.write_text(json.dumps(st, indent=2), encoding="utf-8")
 
 
+# Language models predict digits instead of computing them: in a real chat Sprout answered 876*88894 with
+# 77,868,972 (it is 77,871,144) and a 49-digit product with 38 digits. Every number goes through calc.py.
+CALC_GUIDE = ("Never do arithmetic in your head, not even 11*2: compute every number with the calculate tool "
+              "and give its 'result' exactly, digit for digit (you may add the 'readable' form with commas). For "
+              "word problems (money, interest, doses, engineering, science, units), set up the formula yourself, "
+              "then compute it with calculate, one call with ;-separated named steps if needed. Whole numbers and "
+              "exact results go digit for digit; a long decimal from a measurement or conversion is shown the way "
+              "a person would say it (\"about 6.67 feet, or 6 ft 8 in\", money to 2 decimals) unless the user asks "
+              "for every digit. To write a number in words or in the "
+              "Indian (lakh, crore) or international system, call calculate with that number and format; quote "
+              "its words and grouping exactly and never spell out a large number yourself. For anything that "
+              "needs a little program (dates and durations, conversions, sorting or counting, text processing), "
+              "use run_python. Trust a calculate or run_python result: don't re-check it with another tool.")
 TOOL_GUIDE = ("You can look things up on the user's laptop with the provided read-only tools: vitals, system "
               "information, device details (battery health, display and brightness, volume, Bluetooth, USB, "
               "printers, startup apps, internet connection, laptop model), location, open browser tabs, open apps, "
@@ -628,6 +670,8 @@ TOOL_GUIDE = ("You can look things up on the user's laptop with the provided rea
               "hardware, settings, files): if it isn't above or in a tool result, call the tool that has it, or "
               "say you can't see it. Use a tool only "
               "when the user's request needs information from their laptop; the user approves each use. "
+              "A short follow-up (\"any left?\", \"and now?\", \"what about the other one?\") continues the topic "
+              "just discussed: answer about that, with the same tool if one is needed, never a file search. "
               "When asked to find or check something, get it done in this reply: search once with all likely "
               "spellings joined by | (the search covers the personal folders first), look in the obvious next "
               "place only if that finds nothing, then report what you found with its path. Don't ask "
@@ -639,13 +683,15 @@ TOOL_GUIDE = ("You can look things up on the user's laptop with the provided rea
               "You can also act on the laptop with the action tools: open (apps by name, files, folders, websites, "
               "Settings pages), control (volume, mute, brightness, Bluetooth, Wi-Fi, dark/light theme, media "
               "play/pause/next), window (bring to front, minimise, maximise, close), power (lock, sleep, restart, "
-              "shut down), screenshot, copy (to the clipboard), save_note and reminder. When the user asks you to "
+              "shut down), screenshot, copy (to the clipboard), save_note, reminder, and undo (put back or cancel "
+              "anything you did earlier: a setting, an app you opened, a timer, a shutdown). When the user asks you to "
               "do something these cover, do it in this reply with the tool instead of explaining how; the user "
               "approves each action on a card. Report what the tool result says actually happened (e.g. the "
               "volume before and after); if it failed or was declined, say so. To open a file you don't have the "
               "path of, find it first. Only ever claim an action happened if its tool result confirms it. "
               "For Wordle or Hangman, always use the word_game tool: it picks and keeps the secret word and scores "
               "every guess; report its feedback exactly and never make up a word or feedback yourself. "
+              + CALC_GUIDE + " "
               "The user's folders (use these exact paths, don't guess others): "
               + "; ".join(f"{k} {v}" for k, v in tools.user_folders().items()) + ".")
 REASONING_RX = re.compile(
@@ -658,6 +704,79 @@ QUANTITY_RX = re.compile(r"\bhow (many|much|long)\b", re.I)
 SPAN_RX = re.compile(r"\d|\b(days?|weeks?|months?|years?|hours?|minutes?|until|till|left|total|per|each)\b", re.I)
 
 
+# A message with a calculation in it: the reply must go through the calculate tool.
+ARITH_RX = re.compile(r"\d\s*(?:\*\*|[*×÷+^]|\s[-xX/]\s|(?<![\d/])/(?=\s*\(?\d+(?!\s*/)))\s*\(?\s*-?\.?\d"
+                      r"|\d\s*%\s*of\b|\d!|\b(?:sqrt|cbrt|log|ln|sin|cos|tan|factorial)\s*\(", re.I)
+CALC_WORD_RX = re.compile(
+    r"\b(calculate|compute|evaluate|multiply|multiplied|divide|divided|times|plus|minus|squared|cubed|"
+    r"square root|cube root|factorial|percent(age)?|interest|emi|average|mean|median|standard deviation|"
+    r"dose|dosage|convert|logarithm|sine|cosine|tangent|solve)\b", re.I)
+FILLER_MATH_RX = re.compile(
+    r"\b(?:please|pls|ok|okay|calculate|compute|evaluate|solve|and|tell|me|what|is|whats|how|much|find|the|"
+    r"answer|of|times|plus|minus|multiplied|divided|by|sqrt|cbrt|log|ln|sin|cos|tan|factorial)\b|what's", re.I)
+
+
+# "give it in indian numeric system", "in words": about a number already in the chat, so no digits needed
+NUMBER_FORMAT_RX = re.compile(
+    r"\b(in words|(indian|international|western) (numeric|numbers?|numbering|number system|system|format)|"
+    r"lakhs?|crores?|spell (it|that|the number) out)\b", re.I)
+
+
+def mcp_guides(names):
+    """Guidance for the MCP plug-ins whose tools this request carries. It sits in the system message, which
+    stays the same between messages, so the cached prompt prefix stays valid. (What Memory holds goes with the
+    newest message instead: it changes when the user saves something, and in the system message each change
+    cost a 27 s re-read.)"""
+    host, out = tools.MCP["host"], []
+    if not host:
+        return ""
+    for server, srv in host.servers.items():
+        if any(tools.TOOLS.get(n, {}).get("mcp") == server for n in names) and srv.spec.get("guide"):
+            out.append(srv.spec["guide"])
+    return "\n\n".join(out)
+
+
+# a message that may tell Sprout a lasting fact about the user ("my laptop is an HP Victus, by the way")
+FACT_RX = re.compile(r"\b(remember|keep in mind|note that|by the way|fyi)\b|\bmy \w+(?: \w+)? (?:is|are)\b|"
+                     r"\bI(?: am|'m| like| love| prefer| hate| use| work| study| live)\b", re.I)
+
+
+CLAIM_RX = re.compile(r"\b(noted|saved (?:that|it|this)|i'?ll remember|i will remember|keep (?:that|it|this) in "
+                      r"mind|made a note|added (?:that|it) to (?:my )?memory)\b", re.I)
+MEMORY_SAVES = {"memory_create_entities", "memory_add_observations"}
+
+
+def memory_note(limit=2000):
+    """What the Memory plug-in holds (its JSON-lines file), as short lines for the model."""
+    lines = []
+    try:
+        rows = [json.loads(x) for x in (DATA / "memory.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    except (OSError, ValueError):
+        rows = []
+    for r in rows:
+        if r.get("type") == "entity":
+            lines.append(f"- {r.get('name')} ({r.get('entityType')}): " + "; ".join(r.get("observations", [])))
+        elif r.get("type") == "relation":
+            lines.append(f"- {r.get('from')} {r.get('relationType')} {r.get('to')}")
+    text = "\n".join(lines)
+    if len(text) > limit:
+        text = text[:limit] + "\n- ... (more: use memory_search_nodes)"
+    return "What you remember about the user (all of it): " + (" ".join(text.split("\n")) or "nothing yet.")
+
+
+def is_math(text):
+    text = text or ""
+    numbers = len(re.findall(r"\d+(?:[.,]\d+)*", text))
+    return bool(ARITH_RX.search(text) or (CALC_WORD_RX.search(text) and numbers) or NUMBER_FORMAT_RX.search(text)
+                or (QUANTITY_RX.search(text) and numbers >= 2))  # "50000 at 7% for 10 years, how much ..."
+
+
+def is_bare_math(text):
+    """Just an expression ("11*2", "calculate and tell 876*88894"): the calculator answers it, no thinking."""
+    rest = FILLER_MATH_RX.sub(" ", text or "")
+    return bool(re.search(r"\d", rest)) and not re.search(r"[^\d\s.,+\-*/xX×÷^()%!=?]", rest)
+
+
 def needs_reasoning(text):
     """Questions with arithmetic, plans or comparisons, where answering without working it out goes wrong."""
     text = text or ""
@@ -665,14 +784,23 @@ def needs_reasoning(text):
             or len(re.findall(r"\d+(?:[.:]\d+)?", text)) >= 2)
 
 
-IDENTITY = ("About you: you are Sprout, running the {model} model with llama.cpp entirely on this laptop "
-            "({laptop}); nothing leaves it and you have no internet. Say so plainly if asked what you are.")
+# Without this the model fell back to its training ("I was made by Google") when asked who created it.
+# Sprout itself was designed and built by its owner; only the base model was trained by Google DeepMind.
+IDENTITY = ("About you: you are Sprout, a personal AI assistant created by {creator}. {creator} designed and built "
+            "you, and you run entirely on {first}'s laptop ({laptop}): nothing leaves it and you have no internet. "
+            "{creator} is your creator, your owner and your boss. When asked who made, created, built, owns or "
+            "trained you, or who you work for, the answer is {creator}; never say Google made, created or owns "
+            "you. Only if asked specifically which language model is inside you or who trained that model: it is "
+            "{model}, an open-weights model whose base Google DeepMind trained, which {first} chose and built "
+            "Sprout around, running with llama.cpp.")
 HONESTY = ("Memory and honesty: what the user told you earlier in this conversation is known; use it directly. "
            "You can only do things with your tools, inside the reply you are writing: never promise to do "
            "something later or in the background, and never say you checked, searched, found, opened or changed "
            "anything unless a tool did it in this reply. Beyond your tools you can't act: you can't delete or move "
            "files, install or uninstall software, run programs or scripts from files, send messages or emails, or "
-           "look things up on the internet; say so plainly when asked.")
+           "look things up on the internet; say so plainly when asked. General knowledge from your training "
+           "(places, history, science, how things work, well-known facts like a city's altitude) you answer "
+           "directly; only things that need live data (news, prices, scores, today's weather) are out of reach.")
 LAPTOP = tools.laptop_summary()
 N_CTX = COMMON["ctx-size"]  # the chat server's context (tokens): history beyond it is left out, oldest first
 OMITTED_NOTE = "(Earlier parts of this conversation were left out to fit the model's memory.)"
@@ -711,6 +839,7 @@ def fit_history(body, budget=None):
     return dropped
 GAME_GUIDE = ("For Wordle or Hangman, always use the word_game tool: it picks and keeps the secret word and "
               "scores every guess; tell the user its summary and never make up a word or feedback yourself. "
+              + CALC_GUIDE + " "
               "Laptop access is switched off in Sprout's Settings, so you can't look anything up on the laptop; if "
               "they ask about the laptop, say so and that they can turn it on in Settings.")
 # A command to act ("turn bluetooth off", "ok now set the volume to 40", "close notepad"): the reply must
@@ -721,11 +850,19 @@ ACTION_RX = re.compile(
     r"will you)\W+)*(?:turn|switch|set|put|open|launch|close|quit|exit|mute|unmute|lower|raise|increase|"
     r"decrease|reduce|dim|brighten|lock|restart|reboot|shut ?down|take an? screenshot|take a screen ?shot|"
     r"screenshot|copy|save (?:this|it|that|these|as)|remind|play|pause|resume|skip|minimi[sz]e|maximi[sz]e|"
-    r"bring|enable|disable|cancel|focus)\b", re.I)
+    r"bring|enable|disable|cancel|focus|undo|revert|(?:change|turn|set|put) (?:it|that|them|\w+) back)\b", re.I)
+# "stop the tea timer", "never mind the oven reminder", "don't remind me": cancelling a task given earlier
+CANCEL_RX = re.compile(
+    r"\b(?:stop|never ?mind|forget|delete|remove|scrap|abort|call off|kill|drop|clear|get rid of|no more)\b"
+    r"(?:\W+\w+){0,4}?\W+(?:timers?|reminders?|alarms?|restart|reboot|shut ?down)\b|\bdon'?t remind me\b", re.I)
+QUESTION_RX = re.compile(r"^\W*(?:how|what|why|when|where|which|who|is|are|does|do i|should)\b", re.I)
 
 
 def wants_action(text):
-    return bool(ACTION_RX.search(text or ""))
+    text = text or ""
+    if re.search(r"\b(things|anything|stuff)\b\W*$", text, re.I):  # "can you undo things?" asks what's possible
+        return False
+    return bool(ACTION_RX.search(text) or (CANCEL_RX.search(text) and not QUESTION_RX.search(text)))
 
 
 CHAT_THINK_BUDGET = 320  # tokens of automatic thinking in Chat (~10 s); the Think switch has no cap
@@ -769,12 +906,15 @@ def build_request(req):
     name = settings["user_name"].strip()
     if name:  # the owner (user's request): Sprout works for them
         first = name.split()[0]
+        sub, pos = PRONOUNS.get(settings["pronouns"], ("they", "their"))  # set in Settings; never guessed from the name
         system += (f"\n\nAbout the user: {name} ({first}) owns this laptop and is your boss; you are {first}'s "
                    f"personal assistant, not a friend or buddy. Follow {first}'s instructions and preferences, be "
-                   f"loyal and genuinely useful, and don't lecture. You know their name, but use it rarely: never in "
-                   f"greetings or routine replies, only when it adds something. When you draft something they will "
-                   f"send (an email, a message, a letter), sign it with their name, {name}, instead of a placeholder.")
-    system += f"\n\n{IDENTITY.format(model=MODEL_INFO.get(model, MODEL_INFO['gemma'])['name'], laptop=LAPTOP)}"
+                   f"loyal and genuinely useful, and don't lecture. You know {pos} name, but use it rarely: never in "
+                   f"greetings or routine replies, only when it adds something. When you draft something {sub} will "
+                   f"send (an email, a message, a letter), sign it with {pos} name, {name}, instead of a placeholder."
+                   + (f" {first} uses {settings['pronouns']}." if settings["pronouns"] in PRONOUNS else ""))
+    system += "\n\n" + IDENTITY.format(model=MODEL_INFO.get(model, MODEL_INFO['gemma'])['name'], laptop=LAPTOP,
+                                       creator=name or "your owner", first=name.split()[0] if name else "your owner")
     system += "\n\n" + HONESTY
     system += "\n\n" + UNCENSORED
     use_tools = settings["laptop_access"] and not mode.get("rag")
@@ -791,6 +931,7 @@ def build_request(req):
     tools.games.WANTS_NEW["flag"] = bool(tools.games.NEW_GAME_RX.search(last_text))
     tools.games.WANTS_HINT["flag"] = bool(tools.games.HINT_RX.search(last_text))
     tools.games.USER_TEXT["text"] = last_text
+    tools.actions.USER_TEXT["text"] = last_text
     letters = [c for c in last_text if c.isalpha()]
     # a message in a non-Latin script (Devanagari, Tamil, ...): ask for a reply in the same script
     script_note = (" Reply in the same language and script as the user's message."
@@ -801,8 +942,19 @@ def build_request(req):
         rule = (" Use what the user told you earlier in this conversation directly. For anything they haven't told "
                 "you: look with a tool or say you don't know, and only say you searched, checked or found something "
                 "if a tool did it in this reply.") if use_tools else ""
+        spoken = (" Spoken reply, read aloud: talk naturally in one to three short sentences, as a sharp assistant "
+                  "speaks to their boss; no markdown, lists, symbols or emojis; the full text also shows in the chat.") if req.get("voice") else ""
+        calc_note = (" Compute every number in this reply with the calculate tool and quote its result exactly."
+                     if is_math(last_text) and not wants_action(last_text) else "")
+        memory = ""
+        host = tools.MCP["host"]
+        if host and "memory" in host.servers and not mode.get("rag"):
+            memory = " " + memory_note()
+            if FACT_RX.search(last_text):
+                memory += (" If this message tells you a lasting fact about the user, save it with a memory tool now; "
+                           "never just say you'll keep it in mind.")
         stamp = (f"[Sprout note, not written by the user; never mention it: {tools.now_context()}"
-                 f"{' ' + game if game else ''}{rule}{script_note}]")
+                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):
             last["content"] = list(last["content"]) + [{"type": "text", "text": stamp}]
@@ -812,19 +964,26 @@ def build_request(req):
             "max_tokens": int(req.get("max_tokens") or mode.get("max_tokens", 4096)),
             "timings_per_token": False, **SAMPLING[model]}
     if use_tools or not mode.get("rag"):
-        if not use_tools:
-            names = ["word_game"]
+        if not use_tools:  # laptop access off: only tools that read nothing from the laptop
+            names = ["word_game", "calculate", "run_python"] + [
+                n for n, t in tools.TOOLS.items() if (t.get("mcp") or t.get("plugin")) and not t.get("requires")]
         elif settings["laptop_actions"]:
             names = None  # every tool
         else:  # actions switched off: only the read-only tools
             names = [n for n, t in tools.TOOLS.items() if not t.get("action")]
         body["tools"] = tools.openai_tools(names)
+        guides = mcp_guides({t["function"]["name"] for t in body["tools"]})
+        if guides:  # the system message is already built: add the plug-ins' guidance to it
+            body["messages"][0]["content"] += "\n\n" + guides
         if use_tools and settings["laptop_actions"] and wants_action(last_text):
             body["tool_choice"] = "required"  # an action is done by a tool, never just announced
         if tools.games.is_game_turn(last_text):
             body["tool_choice"] = "required"  # the referee scores game moves; the model must not improvise them
+        if is_math(last_text):
+            body["tool_choice"] = "required"  # numbers come from the calculator, never from the model's head
     think = bool(req.get("think", mode.get("think", False)))
-    if not think and mode.get("style") == "messenger" and needs_reasoning(last_text):
+    if (not think and mode.get("style") == "messenger" and needs_reasoning(last_text)
+            and not is_bare_math(last_text) and not req.get("voice")):  # a silent pause kills a spoken reply  # "11*2" took 23 s of thinking; the calculator needs none
         think = True  # Chat thinks only when the question needs working out; everyday replies stay instant
         body["max_tokens"] = max(body["max_tokens"], 3072)
         if model.startswith("gemma"):  # a short think, not an essay (llama.cpp ends the thinking at the budget)
@@ -869,7 +1028,7 @@ def filter_chunk(payload, no_emoji=False):
 
 def settings_view():
     st = load_settings()
-    return {**st, "tools": [{"id": k, "label": t["label"], "reads": t.get("reads") or t.get("does", ""),
+    return {**st, "voices": voice.VOICES, "tools": [{"id": k, "label": t["label"], "reads": t.get("reads") or t.get("does", ""),
                              "action": bool(t.get("action"))} for k, t in tools.TOOLS.items()]}
 
 
@@ -984,6 +1143,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if path == "/api/chat":
                 return self._chat(json.loads(self._body()))
+            if path.startswith("/api/voice/"):
+                return self._voice(path.rsplit("/", 1)[1])
             if path == "/api/extract":
                 name = urllib.parse.unquote(self.headers.get("X-Filename", "file"))
                 pages = extract_text(name, self._body())
@@ -1024,6 +1185,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     st["laptop_actions"] = upd["laptop_actions"]
                 if isinstance(upd.get("always_allow"), list):
                     st["always_allow"] = [t for t in upd["always_allow"] if t in tools.TOOLS]
+                if upd.get("pronouns") in ("", *PRONOUNS):
+                    st["pronouns"] = upd["pronouns"]
+                if upd.get("voice_name") in voice.VOICE_IDS:
+                    st["voice_name"] = upd["voice_name"]
                 save_settings(st)
                 return self._json(settings_view())
             if path == "/api/tool-decision":
@@ -1039,6 +1204,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     CHAT._stop()
                 return self._json({"ok": True})
             if path == "/api/show":  # a second launch (desktop icon) shows the running window
+                if STATE.get("test"):  # never give the owner a test instance: its model is busy with test chats
+                    return self._json({"test": True})
                 threading.Thread(target=focus_window, daemon=True).start()
                 return self._json({"ok": True})
             if path == "/api/snip":
@@ -1070,8 +1237,82 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": str(e)}, 400)
         self._json({"error": "not found"}, 404)
 
+    def _voice(self, what):
+        """Voice mode (voice.py): start/stop the models, microphone audio in, events out, speech back."""
+        if what == "start":
+            if not voice.available():
+                return self._json({"error": "The voice models aren't installed (see docs/SPROUT.md, Voice)."}, 404)
+            voice.load(load_settings()["voice_name"])
+            old, STATE["listener"] = STATE.get("listener"), voice.Listener()
+            if old:
+                old.close()
+            return self._json({"ok": True, "voice": load_settings()["voice_name"]})
+        if what == "preview":  # Settings: hear a voice before choosing it (loads only the voice, not the mic)
+            req = json.loads(self._body() or b"{}")
+            name = req.get("voice") if req.get("voice") in voice.VOICE_IDS else voice.DEFAULT_VOICE
+            if not voice.available():
+                return self._json({"error": "The voice models aren't installed."}, 404)
+            started_here = not voice.loaded()
+            wav = voice.speak(f"Hi, I'm {next(v['name'] for v in voice.VOICES if v['id'] == name)}. "
+                              "This is how I'd sound as your assistant.", voice=name)
+            if started_here and not STATE.get("listener"):
+                voice.unload()  # voice mode is off: don't keep the voice in memory
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(wav)))
+            self.end_headers()
+            self.wfile.write(wav)
+            return None
+        if what == "stop":
+            if STATE.get("listener"):
+                STATE.pop("listener").close()
+            voice.unload()  # frees ~0.7 GB of RAM
+            return self._json({"ok": True})
+        listener = STATE.get("listener")
+        if what == "audio":
+            if listener:
+                listener.feed(self._body())
+            return self._json({"ok": bool(listener)})
+        if what == "speak":
+            req = json.loads(self._body() or b"{}")
+            if not voice.loaded():
+                return self._json({"error": "voice mode is off"}, 409)
+            wav = voice.speak(req.get("text", ""), voice=load_settings()["voice_name"])
+            self.send_response(200 if wav else 204)
+            self.send_header("Content-Type", "audio/wav")
+            self.send_header("Content-Length", str(len(wav or b"")))
+            self.end_headers()
+            if wav:
+                self.wfile.write(wav)
+            return None
+        if what == "events":  # streamed like /api/chat, so the same-origin check applies
+            if not listener:
+                return self._json({"error": "voice mode is off"}, 409)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.close_connection = True
+            try:
+                while STATE.get("listener") is listener:
+                    try:
+                        ev = listener.events.get(timeout=15)
+                    except queue.Empty:
+                        self.wfile.write(b": keep-alive\n\n")
+                        self.wfile.flush()
+                        continue
+                    self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+                    self.wfile.flush()
+                    if ev["type"] == "closed":
+                        break
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                pass
+            return None
+        return self._json({"error": "unknown"}, 404)
+
     def _chat(self, req):
         """Stream the chat server SSE to the browser, with the RAG sources first."""
+        MCP_READY.wait(20)  # on a first start the plug-in list takes ~10 s; later starts read it from a cache
         body, model, sources = build_request(req)
         no_emoji = MODE_BY_ID.get(req.get("mode"), {}).get("style") == "messenger"
         STATE["streams"] += 1
@@ -1100,7 +1341,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             emit({"type": "error", "error": str(e)})
             return
         try:
-            _round, overflows = 0, 0
+            _round, overflows, used, claim_checked = 0, 0, set(), False
             while _round <= MAX_TOOL_ROUNDS:
                 # the last pass gets no tools, so it must answer from what it found (it used to end
                 # empty when the model asked for one more tool on the last round)
@@ -1122,17 +1363,53 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 if calls is None:
                     return  # error already reported
+                offered = {t["function"]["name"] for t in body.get("tools", [])}
+                if (not calls and not final and not claim_checked and CLAIM_RX.search(content or "")
+                        and "memory_add_observations" in offered and not used & MEMORY_SAVES):
+                    # it said "noted" / "I'll keep that in mind" but saved nothing: have it save for real (the user
+                    # approves the card), so a claim to remember is always backed by memory
+                    claim_checked = True
+                    _round += 1
+                    body["tool_choice"] = "required"
+                    body["messages"] += [{"role": "assistant", "content": content}, {"role": "user", "content": (
+                        "[Sprout note, not written by the user: you said you noted it, but nothing was saved. Save "
+                        "it now with memory_create_entities or memory_add_observations, then confirm in a few "
+                        "words.]")}]
+                    emit({"choices": [{"index": 0, "delta": {"content": "\n\n"}}]})
+                    continue
                 if not calls or final:
+                    if _round and not (content or "").strip() and not calls:
+                        # it reasoned but never answered (gpt-oss at high effort after several tool rounds once
+                        # ended empty after 150 s): ask once more, briefly, with light reasoning
+                        nudge = dict(body, messages=body["messages"] + [{"role": "user", "content": (
+                            "[Sprout note, not written by the user: give your final answer now, briefly, "
+                            "from the tool results above.]")}])
+                        nudge.pop("tools", None)
+                        nudge.pop("tool_choice", None)
+                        if "reasoning_effort" in nudge:
+                            nudge["reasoning_effort"] = "low"
+                        else:
+                            nudge["reasoning_budget_tokens"] = 128
+                        self._one_pass(nudge, emit, no_emoji)
                     break
                 _round += 1
                 body.pop("tool_choice", None)  # a forced first tool call only; then the model may answer
                 body["messages"].append({"role": "assistant", "content": content, "tool_calls": [
                     {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["args"] or "{}"}}
                     for c in calls]})
+                declined = []
                 for c in calls:
                     result = self._use_tool(c, emit)
+                    if isinstance(result, dict) and "error" not in result:
+                        used.add(c["name"])
+                    declined.append(result.get("declined") if isinstance(result, dict) else None)
                     body["messages"].append({"role": "tool", "tool_call_id": c["id"],
                                              "content": json.dumps(result, ensure_ascii=False)[:TOOL_RESULT_CHARS]})
+                if all(declined):  # every action declined: say so in fixed words. The model once answered
+                    # "Shutdown cancelled." after the user declined "Cancel the restart/shutdown".
+                    text = "Okay, not done. Nothing changed (" + "; ".join(declined) + ")."
+                    emit({"choices": [{"index": 0, "delta": {"content": text}}]})
+                    break
             emit({"type": "done"})
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass  # the user pressed Stop: closing the upstream connection aborts generation
@@ -1204,8 +1481,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if is_action and not st["laptop_actions"]:
             emit({"type": "tool", "label": label, "status": "actions_off"})
             return {"error": "The user has turned actions off in Sprout's settings (Let Sprout act on this laptop)."}
+        nothing = tools.nothing_to_do(name, args)  # e.g. cancel a timer that isn't there: no card to approve
+        if nothing:
+            emit({"type": "tool", "label": label, "status": "error"})
+            return nothing
         try:
-            danger = is_action and tools.actions.is_dangerous(name, json.loads(args or "{}"))
+            danger = is_action and (tools.actions.is_dangerous(name, json.loads(args or "{}")) or tools.always_ask(name))
         except ValueError:
             danger = True
         decision = "always" if name in st["always_allow"] and not danger else None
@@ -1224,7 +1505,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             emit({"type": "tool", "label": label, "status": "denied"})
             if is_action:
                 log_action(name, args, {"declined": True})
-            return {"error": "The user declined this request."}
+                return {"error": f"NOT DONE. The user declined the card \"{label}\", so nothing happened and "
+                                 "nothing changed.", "declined": label}
+            return {"error": "The user declined this request, so nothing was read. Say so briefly, speaking to "
+                             "them as \"you\"."}
         result = tools.run(name, args)
         if is_action:
             log_action(name, args, result)
@@ -1264,6 +1548,7 @@ def main(argv=None):
         return 1
     default, avail = choose_default_model()
     STATE["default_model"] = a.model or default
+    STATE["test"] = a.no_browser  # test harnesses run Sprout this way
     print(f"Free RAM {avail:.1f} GiB -> starting {MODEL_INFO[STATE['default_model']]['name']}")
     try:
         srv = Server(("127.0.0.1", APP_PORT), Handler)
@@ -1279,8 +1564,11 @@ def main(argv=None):
             c = http.client.HTTPConnection("127.0.0.1", APP_PORT, timeout=10)
             c.request("POST", path, body, {"Origin": f"http://127.0.0.1:{APP_PORT}",
                                            "Content-Type": "application/json"})
-            c.getresponse().read()
-        except OSError:
+            if (json.loads(c.getresponse().read() or b"{}") or {}).get("test"):
+                message_box("Sprout is running a self-test right now, so it would be slow. "
+                            "Open it again in a few minutes.")
+                return 0
+        except (OSError, ValueError):
             pass
         for _ in range(40):  # up to 2 s for the window to become visible, then raise it
             time.sleep(0.05)
@@ -1291,6 +1579,7 @@ def main(argv=None):
         STATE["inbox_new"].append(inbox_add(a.open_file))
     url = f"http://127.0.0.1:{APP_PORT}/"
     print(f"Sprout is running at {url}  (Ctrl+Alt+Space to summon; Quit in the app to stop)")
+    threading.Thread(target=init_mcp, daemon=True).start()  # first, so the warm-up sees the plug-in tools
     if not a.background:
         threading.Thread(target=preload, args=(STATE["default_model"],), daemon=True).start()
     if a.quit_on_close:

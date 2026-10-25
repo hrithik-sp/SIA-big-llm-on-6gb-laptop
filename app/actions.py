@@ -273,6 +273,11 @@ def copy_to_clipboard(text):
     text = str(text or "")
     if not text:
         return {"error": "nothing to copy"}
+    try:  # remembered so "undo" can put the user's previous clipboard text back
+        import tools
+        CLIPBOARD_BEFORE["text"] = tools.clipboard_text().get("text", "")
+    except Exception:  # noqa: BLE001 (clipboard busy or not text)
+        CLIPBOARD_BEFORE["text"] = None
     u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
     k32.GlobalAlloc.restype = ctypes.c_void_p
     k32.GlobalLock.restype = ctypes.c_void_p
@@ -343,17 +348,17 @@ def init_reminders(path):
                     _ps("toast", r["text"])
                 except (OSError, subprocess.SubprocessError, ValueError):
                     pass
-            time.sleep(10)
+            time.sleep(1)  # timers can be seconds long
     threading.Thread(target=loop, daemon=True).start()
 
 
-def set_reminder(text, minutes=None, at=None):
-    text = str(text or "").strip()[:200]
-    if not text:
-        return {"error": "say what to remind about"}
+def set_reminder(text, minutes=None, at=None, seconds=None):
+    text = str(text or "").strip()[:200] or "Timer"
     now = dt.datetime.now()
-    if minutes is not None:
-        when = now + dt.timedelta(minutes=max(0.5, min(float(minutes), 7 * 24 * 60)))
+    if seconds is not None or minutes is not None:  # a timer: "in 10 seconds", "in 25 minutes"
+        # seconds and minutes are alternatives: the model once sent minutes=1 with seconds=30 for "30 seconds"
+        total = float(seconds) if seconds is not None else 60 * float(minutes)
+        when = now + dt.timedelta(seconds=max(5.0, min(total, 7 * 24 * 3600)))
     elif at:
         m = re.match(r"^\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*$", str(at), re.I)
         if not m:
@@ -371,8 +376,11 @@ def set_reminder(text, minutes=None, at=None):
     with REMINDERS["lock"]:
         REMINDERS["items"].append(item)
         _save_reminders()
-    return {"reminder": text, "at": when.strftime("%A %d %B, %I:%M %p").replace(" 0", " "),
-            "note": "shown as a Windows notification while Sprout is running"}
+    secs = (when - now).total_seconds()
+    fmt = "%A %d %B, %I:%M:%S %p" if secs < 120 else "%A %d %B, %I:%M %p"  # seconds only for short timers
+    return {"reminder": text, "at": when.strftime(fmt).replace(" 0", " "),
+            "in": f"{secs:.0f} seconds" if secs < 120 else f"{secs / 60:.0f} minutes",
+            "note": "shown as a Windows notification with a sound while Sprout is running"}
 
 
 def list_reminders():
@@ -382,14 +390,32 @@ def list_reminders():
                            "at": dt.datetime.fromtimestamp(r["at"]).strftime("%a %d %b, %I:%M %p")} for r in items]}
 
 
-def cancel_reminder(id):
+def _find_reminders(id="", text=""):
+    """The pending reminders meant: all of them ("clear all my reminders"), one by id, by words of its text
+    ("the oven one"; the model has passed the name as the id), or else the most recent one."""
+    pending = [r for r in REMINDERS["items"] if not r.get("done")]
+    if {str(text).lower().strip(), str(id).lower().strip()} & {"all", "every", "everything", "all of them"}:
+        return pending, pending
+    pick = [r for r in pending if id and r["id"] == str(id)]
+    for words_from in (text, id):
+        if not pick and words_from:
+            words = [w for w in re.findall(r"[a-z0-9]+", str(words_from).lower())
+                     if w not in ("the", "my", "a", "reminder", "timer", "alarm", "to", "for")]
+            pick = [r for r in pending if words and all(w in r["text"].lower() for w in words)]
+    if not pick and not id and not text:
+        pick = pending[-1:]
+    return pick[-1:], pending
+
+
+def cancel_reminder(id="", text=""):
     with REMINDERS["lock"]:
-        for r in REMINDERS["items"]:
-            if r["id"] == str(id) and not r.get("done"):
-                r["done"] = True
-                _save_reminders()
-                return {"cancelled": r["text"]}
-    return {"error": "no pending reminder with that id (list_reminders shows them)"}
+        picks, pending = _find_reminders(id, text)
+        if not picks:
+            return {"error": "no matching pending reminder", "pending": [x["text"] for x in pending]}
+        for r in picks:
+            r["done"] = True
+        _save_reminders()
+        return {"cancelled": picks[0]["text"] if len(picks) == 1 else [r["text"] for r in picks]}
 
 
 # --------------------------------------------------------------------------- grouped entry points (the model's tools)
@@ -480,17 +506,139 @@ def power_(mode):
     return lock_screen() if str(mode).lower() == "lock" else power(mode)
 
 
-def reminder(action, text="", minutes=None, at=None, id=""):
+USER_TEXT = {"text": None}  # the user's newest message, set by the server
+UNIT_SECONDS = {"s": 1, "sec": 1, "secs": 1, "second": 1, "seconds": 1, "m": 60, "min": 60, "mins": 60,
+                "minute": 60, "minutes": 60, "h": 3600, "hr": 3600, "hrs": 3600, "hour": 3600, "hours": 3600}
+
+
+def duration_in(text):
+    """Seconds stated in the user's words ("10 seconds", "1 minute 30 seconds", "half an hour"), or None."""
+    t = str(text or "").lower()
+    total, found = 0.0, False
+    words = r"seconds?|secs?|minutes?|mins?|hours?|hrs?"
+    pairs = re.findall(rf"\b(\d+(?:\.\d+)?)\s*({words})\b", t) + re.findall(r"\b(\d+(?:\.\d+)?)([smh])\b", t)
+    pairs += re.findall(rf"\b(half an?|an?)\s+({words})\b", t)  # "an hour", "half an hour"; never "6 am"
+    for num, unit in pairs:
+        n = 0.5 if num.startswith("half") else 1.0 if num in ("a", "an") else float(num)
+        total += n * UNIT_SECONDS[unit]
+        found = True
+    return total if found else None
+
+
+def fix_reminder_args(args):
+    """The model has turned "30 seconds" into 30 minutes, and "10 seconds" into 10 minutes: when the user's
+    message states a duration, that duration is used (and shown on the approval card)."""
+    if str(args.get("action", "")).lower() != "set" or args.get("at"):
+        return args
+    secs = duration_in(USER_TEXT["text"])
+    if secs:
+        args = {k: v for k, v in args.items() if k not in ("minutes", "seconds")}
+        args["seconds"] = secs
+    return args
+
+
+def reminder(action, text="", minutes=None, at=None, id="", seconds=None):
     action = str(action).lower()
     if action == "set":
-        return set_reminder(text, minutes, at)
+        return set_reminder(text, minutes, at, seconds)
     if action == "list":
         return list_reminders()
     if action == "cancel":
-        return cancel_reminder(id)
+        return cancel_reminder(id, text)
     return {"error": "action must be set, list or cancel"}
 
 
 def is_dangerous(name, args):
     """Actions that always need a fresh approval (never 'Always allow')."""
     return name == "power" and str(args.get("mode", "")).lower() in ("sleep", "restart", "shutdown")
+
+
+
+# --------------------------------------------------------------------------- undo
+CLIPBOARD_BEFORE = {"text": None}
+HISTORY = []  # this session's actions, newest last: what was done and how to put it back
+
+
+def record(name, args, result):
+    """Remember an action and how to undo it (called after every successful action)."""
+    undo, desc = None, None
+    before = result.get("before") if isinstance(result, dict) else None
+    if name == "control":
+        s = str(args.get("setting", "")).lower()
+        if s in ("volume", "mute") and isinstance(before, dict):
+            undo = ("set_volume", {"level": before["volume_pct"], "mute": before["muted"]})
+            desc = f"volume back to {before['volume_pct']}%" + (" (muted)" if before["muted"] else "")
+        elif s == "brightness" and before is not None:
+            undo, desc = ("set_brightness", {"level": before}), f"brightness back to {before}%"
+        elif s in ("bluetooth", "wifi") and before:
+            undo = ("set_radio", {"radio": s, "on": str(before).lower() == "on"})
+            desc = f"{'Bluetooth' if s == 'bluetooth' else 'Wi-Fi'} back {str(before).lower()}"
+        elif s == "theme" and before:
+            undo, desc = ("set_theme", {"mode": before}), f"{before} theme back"
+        elif s == "media" and result.get("sent") == "play_pause":
+            undo, desc = ("media", {"control": "play_pause"}), "play/pause toggled back"
+    elif name == "open":
+        what = str(args.get("what", "")).lower()
+        if what == "app" and result.get("launched"):
+            undo, desc = ("close_app", {"name": result["launched"]}), f"close {result['launched']}"
+        elif what in ("file", "folder") and result.get("opened"):
+            label = Path(result["opened"]).name
+            undo, desc = ("close_app", {"name": label}), f"close {label}"
+        elif what == "website":
+            desc = "can't close a browser tab; close it in the browser"
+    elif name == "window":
+        a, app = str(args.get("action", "")).lower(), str(args.get("app", ""))
+        if a in ("minimize", "maximize"):
+            undo, desc = ("restore_window", {"app": app}), f"restore {app}'s window"
+    elif name == "power" and str(args.get("mode", "")).lower() in ("restart", "shutdown"):
+        undo, desc = ("power", {"mode": "cancel"}), f"cancel the {args['mode']}"
+    elif name == "reminder" and str(args.get("action", "")).lower() == "set" and REMINDERS["items"]:
+        rid = REMINDERS["items"][-1]["id"]
+        undo, desc = ("cancel_reminder", {"id": rid}), f"cancel the reminder '{REMINDERS['items'][-1]['text']}'"
+    elif name == "copy" and CLIPBOARD_BEFORE["text"] is not None:
+        undo, desc = ("copy_to_clipboard", {"text": CLIPBOARD_BEFORE["text"] or " "}), "put the previous clipboard text back"
+    elif name in ("screenshot", "save_note"):
+        desc = f"Sprout doesn't delete files; it's at {result.get('saved', '?')}"
+    HISTORY.append({"n": len(HISTORY) + 1, "tool": name, "args": args, "undo": undo, "desc": desc,
+                    "done": False, "label": f"{name} {json.dumps(args)[:120]}"})
+    del HISTORY[:-50]
+
+
+def restore_window(app):
+    wins = _windows_of(app)
+    if not wins:
+        return {"error": f"No open window of '{app}' was found."}
+    ctypes.windll.user32.ShowWindow(wins[0][0], 9)  # SW_RESTORE
+    return {"restored": wins[0][2][:120]}
+
+
+def _undo_candidate(what="last"):
+    what = str(what or "last").lower().strip()
+    pool = [h for h in reversed(HISTORY) if not h["done"]]
+    if what not in ("", "last", "that", "it", "everything"):
+        same = {"timer": "reminder", "alarm": "reminder", "sound": "volume", "music": "media", "song": "media",
+                "screen": "brightness", "dark": "theme", "light": "theme", "mode": "theme"}
+        filler = {"the", "my", "back", "undo", "that", "it", "please", "cancel", "put", "change", "set", "turn",
+                  "revert", "last", "a", "to", "you", "did", "what", "just"}
+        words = [same.get(w, w) for w in re.findall(r"[a-z0-9]+", what) if w not in filler]
+        pool = [h for h in pool if all(w in (h["label"] + " " + (h["desc"] or "")).lower() for w in words)]
+    return pool[0] if pool else None
+
+
+def undo(what="last"):
+    """Undo one earlier action of this session: the last one, or the latest that matches (e.g. "volume")."""
+    h = _undo_candidate(what)
+    if not h:
+        return {"error": "nothing Sprout did in this session matches that"}
+    if not h["undo"]:
+        return {"error": f"that can't be undone: {h['desc'] or 'no way back for this action'}"}
+    fn, kw = h["undo"]
+    result = globals()[fn](**kw)
+    if not (isinstance(result, dict) and "error" in result):
+        h["done"] = True
+    return {"undid": h["desc"], "result": result}
+
+
+def undo_description(what="last"):
+    h = _undo_candidate(what)
+    return f"Undo: {h['desc']}" if h and h["undo"] else "Undo an earlier action"

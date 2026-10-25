@@ -10,5 +10,10 @@ Third-party components keep their own licences:
 - app/data/places.tsv: place names and coordinates from GeoNames (https://www.geonames.org),
   cities15000, admin1 codes and country info, licensed CC BY 4.0; reduced to name, region,
   country, coordinates and population.
+- Optional plug-ins, installed separately and not included: Pydantic Monty (pydantic-monty, MIT) for the
+  Python sandbox; the Model Context Protocol reference server-memory (MIT); Windows-MCP by CursorTouch
+  (MIT, configured but disabled).
+- Voice mode (optional, installed separately): sherpa-onnx (Apache-2.0); Silero VAD (MIT); NVIDIA Parakeet
+  TDT 110M (CC-BY-4.0); Kokoro-82M (Apache-2.0), voices by hexgrad.
 - Models used by this project are not included and come under their own licences; see each
   model card.

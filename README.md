@@ -93,7 +93,7 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
 </table>
 
 The full story, including the wrong turns and how each was caught, is in
-**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 39 problems with how
+**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 48 problems with how
 each was solved.
 
 ## Sprout
@@ -114,6 +114,12 @@ A one-click desktop app built on these results:
   sets reminders.
 - **Secure by design:** a permission card for every action, fixed checked actions with no
   scripts or shells, nothing deleted, and secret locations blocked.
+- **Talks with you:** voice mode in the same window. You speak, it answers aloud in a natural
+  voice (12 male and female voices to choose from), and the conversation appears as chat. Speech
+  recognition and the voice run offline on the CPU, beside the same Gemma model.
+- **Exact and general:** every number comes from an exact calculator, a locked-down Python sandbox
+  handles dates, conversions and data, and an optional memory remembers what you tell it (each save
+  approved).
 
 → **[Sprout guide: features, install, security model](docs/SPROUT.md)**
 
@@ -125,12 +131,12 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (58 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (62 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
 | `app/` | Sprout (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 72 unit tests |
+| `tests/` | 82 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -138,7 +144,7 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 72 tests, no GPU or models needed
+python -m unittest discover tests          # 82 tests, no GPU or models needed
 ```
 
 - **Run Sprout:** build llama.cpp, download the five model files, run `app\install.ps1`.
@@ -167,9 +173,10 @@ run it. Next, in order:
 2. **Optimise the laptop on request.** Find what slows it down (startup apps, memory hogs, full
    disks, battery wear), explain it plainly, and, with approval, apply the fix.
 3. **A faster first reply.** Keep the model ready longer when memory allows, or prefetch it from
-   the SSD, so the first message after a break isn't ~40 s.
-4. **Memory you control.** Remember preferences and facts you tell it, stored locally,
-   viewable and deletable.
+   the SSD, so the first message after a break isn't ~40 s. Measured cause: the start-up pre-read of
+   the ~5,700-token instruction and tool prompt, so a leaner tool prompt is the next step.
+4. ~~**Memory you control.**~~ Done: remembers preferences and facts you tell it, stored locally;
+   each save is approved and "forget …" shows exactly what goes.
 5. **See the screen.** "What am I looking at?" through the vision model, with permission.
 6. **A light mode for heavy multitasking:** a smaller model when Chrome and other apps need the
    RAM (Gemma 4 E4B/12B QAT and Qwen3.5-9B evaluation in progress).

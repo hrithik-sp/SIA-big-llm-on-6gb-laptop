@@ -17,6 +17,7 @@
   <symbol id="i-snip" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><rect x="8.5" y="8.5" width="7" height="7" rx="1"/></symbol>
   <symbol id="i-board" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M9 10h6M9 14h6"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
   <symbol id="i-side" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></symbol>
@@ -84,6 +85,7 @@
       <div id="composer">
         <button id="plus" class="icon-btn" title="Add files, snip the screen, or paste" aria-haspopup="menu" aria-label="Add"><svg><use href="#i-plus"/></svg></button>
         <textarea id="input" rows="1" placeholder="Ask Sprout…" aria-label="Message"></textarea>
+        <button id="voice" class="icon-btn voice-btn" title="Talk with Sprout (voice mode)" aria-label="Voice mode" aria-pressed="false"><svg><use href="#i-mic"/></svg></button>
         <button id="send" class="send" title="Send (Enter)" aria-label="Send"><svg><use href="#i-send"/></svg></button>
         <button id="stop" class="send stop" title="Stop (Esc)" aria-label="Stop" hidden><svg><use href="#i-stop"/></svg></button>
       </div>
@@ -122,7 +124,11 @@
 <div id="panel-settings" class="menu panel" role="dialog" aria-label="Settings" hidden>
   <div class="set-h">Your name</div>
   <input id="set-name" class="field" type="text" maxlength="60" placeholder="What should Sprout call you?" aria-label="Your name">
+  <select id="set-pronouns" class="field" aria-label="Your pronouns"><option value="">Pronouns (optional)</option><option value="he/him">he/him</option><option value="she/her">she/her</option><option value="they/them">they/them</option></select>
   <p class="note">Sprout works for you: it uses your name and follows your instructions and preferences.</p>
+  <div class="set-h">Voice</div>
+  <div class="voice-row"><select id="set-voice" class="field" aria-label="Sprout's voice"></select><button id="voice-preview" class="chip" title="Hear this voice">Preview</button></div>
+  <p class="note">Voice mode (the microphone button) listens and speaks entirely on this laptop.</p>
   <div class="set-h">Laptop access</div>
   <label class="switch wide"><input id="set-laptop" type="checkbox"><span class="track"></span><span>Let Sprout look things up on this laptop</span></label>
   <p class="note">Reading: vitals, devices, location, tabs, apps, processes, the clipboard, and any folder or file you ask about. Sprout asks before each use and never touches places that hold passwords or keys.</p>

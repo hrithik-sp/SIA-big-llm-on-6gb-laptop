@@ -308,6 +308,24 @@ The details are in [docs/SPROUT.md](docs/SPROUT.md). Engineering problems I foun
   - each action is approved on a card, and dangerous ones are asked every time;
   - nothing can be deleted, installed or run from a file;
   - a live test verifies each action against the laptop's real state and restores it: 32/32.
+- **Undo and cancel** (finding 59). Every action records how to reverse it, so "undo that", "cancel
+  the tea timer" or "never mind the shutdown" work. Timers take seconds and the duration the user typed
+  wins. When the user declines a card, Sprout writes "Okay, not done" itself: the model had once
+  confirmed a declined cancel as done.
+- **An exact calculator** (finding 60). The model answered 876 × 88894 wrong by 2,172, with full
+  confidence: language models predict digits rather than compute them. Every number now comes from a
+  calculator the model is required to use (exact whole numbers and decimals, 40-digit maths functions),
+  and 8 of 8 real questions from arithmetic to finance, medicine and physics came out exactly right.
+- **General abilities from existing parts** (finding 61). Rather than adding one special tool per
+  problem, I made Sprout a host for MCP plug-ins (the common plug-in format for AI tools, also
+  supported by llama.cpp) and gave it a Python sandbox (Pydantic Monty). Memory now persists across
+  chats with approved saves and verified forgetting. An app-control plug-in was integrated too, but it
+  made VS Code hang, so it is switched off until it can work without touching other windows.
+- **Voice mode** (finding 62). Sprout listens and speaks in the same window, offline on the CPU, with
+  the same Gemma model. Each part was chosen by measuring on this laptop: Silero VAD, Parakeet 110M
+  for speech recognition, and Kokoro for 12 natural voices. The first design's larger recogniser pushed
+  Gemma into SSD paging. A model a quarter the size, just as accurate, brought the reply gap to a median
+  of 4.4 s with other apps open.
 - **The live clock first broke prompt caching** (one line that changed every minute, at the top
   of the prompt): replies in a real chat took 12–16 s. With the clock moved to the newest message,
   a six-turn test re-processes only the new message and shows the first word in 2–3 s
@@ -528,6 +546,15 @@ Full commands: lab notebook, "Recommended settings".
 | 37 | An action announced but never taken | "Bluetooth is now off" with no tool call | Commands force a tool call; questions don't | 58 |
 | 38 | Store-app and folder windows invisible to Sprout | Calculator, Settings and Downloads "not found" | Window list includes them, matched by title | 58 |
 | 39 | A test's theme change left the taskbar white | Setting restored, taskbar not redrawn | Both redraw messages sent; visible tests only with the owner's OK; restore verified on screen | 58 |
+| 40 | "A timer for 10 seconds" became 10 minutes | The tool took only minutes; the model converted badly | Seconds supported; the duration the user typed wins | 59 |
+| 41 | "Cancel the tea timer" found nothing | The model passed the name as the reminder's id | Names matched in either field; "all" supported; the card names what goes | 59 |
+| 42 | A declined card reported as done ("Shutdown cancelled.") | The model wrote a confident confirmation anyway | When every action is declined, Sprout writes "Okay, not done" itself | 59 |
+| 43 | Wrong arithmetic (876 × 88894 → 77,868,972; a 49-digit product given 38 digits) | Models predict digits as tokens; they don't compute | An exact calculator the model must use for every number | 60 |
+| 44 | Every new gap got its own special tool | Fixing one task at a time | A Python sandbox (Monty) and MCP plug-ins (Memory), with Sprout's approval rules on each | 61 |
+| 45 | "I'll keep that in mind" with nothing saved; "forgot" with nothing deleted | The model claimed what no tool did | A claim to remember triggers a real, approved save; Sprout's own `forget` lists and verifies what goes | 61 |
+| 46 | VS Code hung twice while testing app control | Windows-MCP's UI Automation hooks every window | Windows-MCP switched off; the tab counter touches only browser frames | 61 |
+| 47 | Asked who made it, Sprout said Google | Its prompt never named its creator, so the model fell back on its training | The prompt names the owner as creator; the base model is named only when asked | 62 |
+| 48 | Voice replies took 8–11 s | The voice models' RAM pushed the 26B model into SSD paging | A recogniser a quarter the size (same accuracy), a shorter per-turn note: median 4.4 s | 62 |
 
 ---
 

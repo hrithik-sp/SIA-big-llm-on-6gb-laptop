@@ -77,7 +77,7 @@ try {
       [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
       $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
       $esc = [System.Security.SecurityElement]::Escape($Value)
-      $xml.LoadXml("<toast scenario='reminder'><visual><binding template='ToastGeneric'><text>Sprout reminder</text><text>$esc</text></binding></visual><actions><action content='Dismiss' arguments='dismiss' activationType='system'/></actions></toast>")
+      $xml.LoadXml("<toast scenario='reminder'><visual><binding template='ToastGeneric'><text>Sprout reminder</text><text>$esc</text></binding></visual><audio src='ms-winsoundevent:Notification.Reminder'/><actions><action content='Dismiss' arguments='dismiss' activationType='system'/></actions></toast>")
       $aumid = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe'
       [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid).Show([Windows.UI.Notifications.ToastNotification]::new($xml))
       $out.shown = $true

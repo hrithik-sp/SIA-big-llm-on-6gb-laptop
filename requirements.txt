@@ -7,6 +7,8 @@ pypdf==6.21.1        # PDF text (Sprout Read mode and file tool)
 pillow==12.0.0       # screen snips / clipboard images, icons
 jinja2==3.1.6        # rendering GGUF chat templates (tools/chat_corpus.py)
 pywebview==6.2.1     # Sprout's standalone window (WebView2; pulls in pythonnet). Without it, Sprout uses an Edge app window
+pydantic-monty==1.3.0 # Sprout's run_python sandbox (Monty: a locked-down Python interpreter in Rust)
+sherpa-onnx==1.13.8   # Sprout's voice mode: Silero VAD, Parakeet speech recognition, Kokoro voice (CPU)
 
 # Optional: only for tools/bandwidth.py and tools/check_sysmem_fallback.py (GPU memory tests)
 # torch==2.9.1  (CUDA build from https://pytorch.org)

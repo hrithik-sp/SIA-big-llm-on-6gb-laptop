@@ -1386,6 +1386,197 @@ Goal: Sprout separate from Edge, quick and smooth.
       Since then the theme action sends both messages. The live test only runs with `--visible` and the
       owner's OK, and restores with verification and retries.
 
+59. **Timers in seconds, and cancelling or undoing anything Sprout did earlier.**
+    - **Timers:** "set a timer for 10 seconds and tell me with sound" became a 10-minute reminder; "30 seconds"
+      became 90 s or 30 min. The reminder tool only took minutes and the model converted badly.
+      - The tool now takes `seconds` or `minutes`. The duration the user actually typed ("10 seconds",
+        "1 minute 30 seconds", "half an hour"; never "6 am") is parsed on the server and wins over the
+        model's numbers.
+      - The notification plays the Windows reminder sound.
+    - **Undo:** every action records how to reverse it: volume, mute, brightness, radios, theme and media back
+      to their previous state; an opened app or file closed; a minimised window restored; a restart or shutdown
+      cancelled; a reminder cancelled; the clipboard restored. Screenshots and notes are not deleted (Sprout
+      never deletes files); the answer gives their path instead. "Undo that", "put the volume back" and "cancel
+      the timer" pick the latest matching action, and the card says what will be undone.
+    - **Cancel by name:** "cancel the tea timer" failed at first ("couldn't find a timer named tea"): the
+      model passed the name as the reminder's id. Names are now matched in either field, "all" cancels every
+      pending reminder, and the card names what will go ("Cancel all 2 reminders: tea, check the oven").
+      - Phrasings: "stop / never mind / forget / scrap / abort / call off … the timer, reminder, restart or
+        shutdown" and "don't remind me" now always reach a tool (12 of 12); questions such as "how do I
+        remove an alarm on my phone?" don't (6 of 6).
+      - Live checks with harmless timers: set, cancel by name, list, cancel all, and follow-ups in one
+        conversation ("never mind the tea one" → "any left?" → "clear them all"): all correct.
+    - **A declined card reported as done.** With every card declined, "abort the shutdown" was answered
+      "Shutdown cancelled." (2 of 5 answers false; a stronger instruction left 2 of 5 false). When every
+      action in a step is declined, Sprout now writes the reply itself, "Okay, not done. Nothing changed (…)",
+      instead of letting the model phrase it: 6 of 6 correct. A cancel or undo with nothing to act on shows
+      no card at all.
+    - **Test isolation.** A live check auto-approved a real 10-second timer, and its notification sounded on
+      the owner's laptop. The stray reminders were cancelled and the test lines removed from the action log.
+      Since then every harness runs Sprout on a temporary data folder, and `--deny` shows what the model
+      would do without letting it act.
+
+60. **Sprout got arithmetic wrong; every number now comes from an exact calculator.**
+    - **Why:** in a real chat, `876*88894` was answered 77,868,972 (correct: 77,871,144), and a product
+      of five numbers, which has 49 digits, was answered with a 38-digit number. Even `11*2` took 23 s,
+      because two numbers in a message switched on automatic thinking.
+    - **Why a model that solves engineering problems fails here:** a language model doesn't run the
+      multiplication algorithm. It reads numbers as tokens (chunks of a few digits) and predicts the most
+      likely next chunk. That gets the method and the first and last digits right, but long carries go
+      wrong, and the answer looks just as confident. Problem solving is pattern and method, which the
+      model is good at; exact digits are computation, which it isn't.
+    - **The fix:** `app/calc.py`, a calculator the model must use:
+      - whole numbers of any length are exact, and decimals are exact fractions (0.1 + 0.2 = 0.3, money
+        has no rounding error);
+      - sqrt, exp, ln and non-integer powers are computed to 40 significant digits; trigonometry (radians
+        and degrees) and statistics use 15;
+      - several named steps in one call ("r = 0.07/12; 50000*(1+r)**120");
+      - the expression is parsed and checked node by node, never run as code. Only numbers, operators,
+        the listed functions and the step names are accepted, and results above about a million digits are
+        refused.
+      - It reads nothing from the laptop, so it needs no approval card and works with laptop access off.
+    - **Forced use:** a message with a calculation in it ("11*2", "15% of 2400", or a "how much/many"
+      question with two or more numbers) requires a tool call, and the turn's note says to compute every
+      number with the calculator. Dates, phone numbers, timers and volume settings don't trigger it (unit
+      tests). A bare expression skips thinking.
+    - **Why not the Windows Calculator app:** Windows offers programs no way to read its result. Typing
+      into its window and reading the screen back would be slow, would take over the screen, and could
+      misread. The calculator runs on the laptop like the app does, and is exact to every digit.
+    - **Live check, real model** (`sprout_tools_check.py`), all 8 correct and checked independently:
+
+      | Request | Before (no calculator) | With the calculator |
+      |---|---|---|
+      | 78·87965·4231589659775·875549663211459·98874488899999 | a wrong 38-digit number | all 49 digits correct |
+      | 876 × 88894 | 77,868,972 (wrong) | 77,871,144, in 4 s |
+      | 11 × 2 | 22, in 23 s | 22, in 3 s |
+      | ₹50,000 at 7% compounded monthly, 10 years | 100,483.12 (wrong) | 100,483.07 |
+      | 18 kg child, 15 mg/kg every 6 h | 270 / 1,080 mg | 270 / 1,080 mg (calculated) |
+      | 2.2 kΩ ∥ 4.7 kΩ at 12 V | 8.01 mA | 8.01 mA (calculated) |
+      | ₹2,499 + 18% GST | 2,948.82 | 2,948.82 (calculated) |
+      | projectile, 20 m/s at 35°, g = 9.81 | 38.32 m | 38.32 m (calculated) |
+
+      The "before" column comes from the same questions answered by a Sprout that hadn't been updated
+      yet. The short word problems were right without the calculator too, but nothing guaranteed it.
+    - **Number words:** the model then wrote 266,473,922,476,416 as "twenty-six quadrillion …" (it is
+      266 trillion) and garbled the Indian words. The calculator now also returns Indian grouping
+      (26,64,73,92,24,76,416), lakh/crore words ("2,66,47,392 crore, 24 lakh, 76 thousand, 416" spelled
+      out), the traditional neel/kharab/arab words and international words. "In words" and "in the Indian
+      system" follow-ups go to it.
+    - **Harness guard:** that "before" run happened by accident. A test server left over from an
+      interrupted check still held Sprout's port, so the new run's questions went to the old code. Every
+      harness now refuses to start while port 8765 is in use. A Sprout started for a test also refuses
+      to hand its window to the owner ("running a self-test"), so a test never answers the owner's chat.
+
+61. **General abilities from existing open-source parts instead of one fix at a time.**
+    - **Why:** each new gap (arithmetic, number words, dates) was getting its own special tool. I looked
+      for maintained projects that cover whole classes of tasks and could be reused.
+
+      | Candidate | Verdict |
+      |---|---|
+      | Model Context Protocol (MCP) plug-ins; llama.cpp itself gained MCP support (`--mcp-servers-config`, `tools/server/README.md`, verified in the cloned source) | **Used.** llama-server only lists MCP tools for its web UI; the client runs them. So Sprout became an MCP host (`app/mcp_host.py`, about 300 lines, stdio JSON-RPC as llama.cpp does) |
+      | Pydantic Monty 1.3.0, a locked-down Python interpreter in Rust (successor of the retired mcp-run-python) | **Used** as `run_python` |
+      | MCP reference `server-memory` (pinned to 2026.8.31, not the brand-new 2.0.0) | **Used** for memory |
+      | Windows-MCP 0.8.5 (CursorTouch): operates any app through UI Automation | Integrated, then **switched off** (below) |
+      | Open Interpreter, smolagents, llama.cpp's `exec_shell_command` | **Not used:** they run model-written code directly on the laptop (smolagents' docs say its local executor is not a sandbox), or would replace Sprout's approval cards |
+
+    - **Sprout's rules on every plug-in tool** (`app/mcp.json`): a tool reaches the model only if listed;
+      each has an approval policy (none, read, action, or asked every time), arguments Sprout fixes itself,
+      allowed and blocked values, and the card's wording. Tool lists are cached, so servers start only on
+      first use, and every server runs in Sprout's job object. Windows-MCP sends usage analytics by
+      default, so Sprout sets `ANONYMIZED_TELEMETRY=false`. Verbose plug-in schemas are shortened
+      automatically ("X or null" → X).
+    - **The sandbox** blocked `open()`, `os.listdir`, `os.environ`, `subprocess` and `socket`, and stopped an
+      endless loop at 5 s; runs take milliseconds. Two gaps found and fixed: its clock was UTC (5½ hours off
+      here), now the laptop's offset; and `calendar`, `statistics` and `string` were missing, now
+      lent from the host as pure functions.
+    - **Live checks, real model (temporary data folder):**
+      - Your number conversation: product → "give in indian numeric system" → "in words", all exact.
+      - Think deep (gpt-oss): "days from 23 October to 15 November 2026" first ended **empty after 150 s**
+        (it re-checked the sandbox's answer with three calculator calls, then spent its budget reasoning).
+        Fixes: an empty final answer gets one short "answer now" pass, and the guide says to trust a tool's
+        result. After: "23 days", one tool call.
+      - Memory, five rounds until correct:
+        - "I'll keep that in mind" with nothing saved. Now a claim to remember with no save triggers a real
+          save, approved on a card.
+        - "Forget my sister's name" said done but deleted nothing (the model guessed the fact's wording).
+          Now Sprout's own `forget` matches stored facts by the user's words, the card lists them, and the
+          result is verified.
+        - Each save cost a 27 s re-read, because memory sat in the system prompt. Now it goes with the
+          newest message: 2–3 s.
+        - Final run: save, recall in a new chat, proactive save of "my laptop is an HP Victus", forget the
+          sister, "forget my brother" → nothing matches, no card. Still imperfect: one save needed a second
+          card after a malformed first call, and one "what do you remember" left out a fact.
+      - App control with every action declined: Win+R was blocked before any card. "Launch cmd.exe"
+        reached a card through Windows-MCP's App tool, so Sprout's no-shells rule now also applies to it.
+    - **Incident 1: npm in the wrong folder.** Installing the memory server into a new, empty folder made
+      npm use the nearest parent with a `node_modules`: the home folder. That folder holds a hand-made
+      `node_modules` that two of the owner's projects rely on. npm removed 119 packages and changed 26
+      (`express` 4 → 5). Rebuilt from npm's debug log, its cache index and `npm install --before=<date>`
+      replays of the three original install sessions: 174 of 174 package paths, all 29 surviving versions
+      and all 28 versions independently dated by the cache match. Both projects resolve `express` 4.21.1
+      and `mongoose` 8.17.1 again. The memory server now has its own `package.json`, which the install
+      steps require.
+    - **Incident 2: VS Code hung twice.** The Windows Event Log shows Code.exe hangs that ended with it
+      being closed (event 1002 AppHangB1) twice, both after Windows-MCP was installed, and none in the two
+      weeks of logs before, despite many model runs. Windows-MCP walks every window through UI
+      Automation, and its watchdog registers a system-wide focus handler. That makes Chromium-based apps
+      such as VS Code switch on their accessibility layer. Two leftover Windows-MCP processes were also
+      still running with the hook active. Response:
+      - Windows-MCP is disabled in `mcp.json`, and the leftovers were stopped.
+      - Sprout's own browser-tab counter, the only other UI Automation user, now finds browser windows by
+        process before any UI Automation call, never asks other apps' windows, never walks into web pages,
+        and stops after 600 elements per window.
+      - Operating apps by their buttons stays off until it can be done without touching other windows.
+
+62. **Voice mode: real-time spoken conversation, offline, with the same chat model.**
+    - **Design, and why.** A cascaded pipeline (speech → text → Gemma → speech), as in Kyutai's Unmute.
+      Full-duplex speech models answer in ~200 ms (Moshi, [arXiv 2410.00037](https://arxiv.org/abs/2410.00037)),
+      but they are separate 7B GPU models: they can't share a 6 GB GPU with the 26B model, and the owner
+      wants Sprout's own model. Target: human turn-taking keeps gaps short in every language studied
+      (cross-language means differ by at most 250 ms; Stivers et al., PNAS 106(26):10587, 2009), so every
+      stage below was chosen and measured for latency. Gemma 4 26B has no audio input (only E2B/E4B do).
+    - **Parts** (all on the CPU via sherpa-onnx 1.13.8, Apache-2.0; 2.0.0 was too new to pin; model files
+      checked against GitHub's SHA-256, recorded in `LLM_HOME/models/voice/SOURCES.json`):
+
+      | Part | Choice | Measured here | Rejected |
+      |---|---|---|---|
+      | When you start and stop talking | Silero VAD (MIT), 0.6 s end-of-speech silence | < 1 ms per 32 ms chunk | Smart Turn v3 (BSD-2) is the documented next step |
+      | Speech → text | NVIDIA Parakeet TDT 110M, int8 (CC-BY-4.0) | 0.06–0.10 s per sentence, 166 MB; US, UK and Indian-accented English word-perfect | Parakeet 0.6B v3: equally accurate, 669 MB, which pushed Gemma into SSD paging. Whisper-large-v3-turbo: 5× slower, 1.3 GB, garbled Hindi. Moonshine base: invented a sentence for a Hindi clip |
+      | Text → speech | Kokoro-82M v1.0, fp32 (Apache-2.0), 24 kHz | 6.3 s of speech in 2.4 s (4 threads), ~0.5 GB | Its int8 export ran slower than real time (RTF 1.2) on this CPU |
+
+    - **Voices:** the 12 English voices graded C or better by Kokoro's author (VOICES.md "Overall Grade"),
+      best first: female Heart (A), Bella (A−), Nicole and Emma (B−), Aoede, Kore and Sarah (C+); male
+      Michael, Fenrir and Puck (C+), George and Fable (C). D-graded voices are left out. Default: Michael
+      (the owner asked for a male voice). British voices load the British pronunciation dictionary.
+    - **In the app:** a microphone button in the same window. The browser captures audio with its echo
+      cancellation, so you can interrupt Sprout mid-sentence by talking. Your words and its replies appear
+      as normal chat messages. The reply is spoken sentence by sentence while it is still being written,
+      with the next sentence prepared during playback. In voice mode Sprout answers in spoken style (short,
+      no markdown) and skips the automatic thinking pause. While a tool runs it says "One sec." instead of
+      going silent. The models load with voice mode and are freed when it stops (~0.7 GB).
+    - **End to end with the real model** (`tools/sprout_voice_check.py`: questions spoken by Sprout's voice,
+      streamed in at real-time pace; Chrome and VS Code open, 8.4 GB free before start):
+      - every question transcribed correctly, 0.5–0.6 s after the speech ended;
+      - spoken-style replies with no markdown, and "Who created you?" → "Hrithik S P created me.";
+      - end of speech → first sentence's audio ready: **median 4.4 s** over 4 turns, 10.2 s for a turn that
+        needed the calculator. It was 8–11 s before the smaller recogniser and the shorter per-turn note.
+      - Where the time goes: llama-server reused ~5,700 cached tokens and processed ~200 new ones per turn,
+        but at ~75 tokens/s instead of ~330, because RAM was nearly full and model pages came from the SSD.
+        With more free RAM it gets faster.
+    - **The ~35 s first reply** after Sprout starts happens in text mode too. That message itself takes
+      1.8 s; it waits behind the start-up warm-up, which pre-reads the ~5,700-token instruction and tool
+      prompt at SSD-limited speed. A leaner tool prompt is the next step.
+    - **Also fixed:**
+      - **Creator:** asked who made it, Sprout answered "Google". Its prompt now says the owner created and
+        built Sprout; only if asked which model is inside does it say Gemma, trained by Google DeepMind.
+        Checked: "Who created you?" → "Hrithik S P created and built me."
+      - **Raw calculator digits:** "80 inches is 6.666666666666666666666666666667 feet" is now "about 6.67
+        feet".
+      - **Refusing general knowledge:** "what is the altitude of Bangalore" was refused for lack of internet;
+        now "about 920 metres".
+    - **Needs a person:** the first microphone permission prompt, real speech with the owner's own voice and
+      accent, and choosing the voice by ear.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |

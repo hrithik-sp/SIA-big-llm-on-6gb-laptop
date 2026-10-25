@@ -162,7 +162,11 @@ def main():
     (tmp / "settings.json").write_text(json.dumps({"user_name": "Hrithik S P", "laptop_access": True}))
     code = ("import sys, pathlib; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
-            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.main(sys.argv[1:])")
+            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
+    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    with socket.socket() as s:
+        if s.connect_ex(("127.0.0.1", 8765)) == 0:
+            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=dict(os.environ))
     for _ in range(120):
         try:

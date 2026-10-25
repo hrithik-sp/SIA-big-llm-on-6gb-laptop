@@ -51,11 +51,53 @@ allow** or **Deny**.
 - **Windows:** bring to front, minimise, maximise, close (like clicking X).
 - **Power:** lock, sleep, restart or shut down. Restart and shutdown wait 60 seconds and can be
   cancelled; sleep, restart and shutdown are confirmed every time.
-- **Other:** take a screenshot, copy text to the clipboard, save a note, and set reminders that pop up
-  as Windows notifications.
+- **Other:** take a screenshot, copy text to the clipboard, save a note, and set reminders or timers
+  (in seconds, minutes or at a time) that pop up as Windows notifications with a sound.
+- **Calculator:** every number in an answer is computed exactly, not guessed: arithmetic of any length,
+  percentages, money, doses, scientific and engineering formulas (sqrt, logs, trig in degrees or
+  radians, factorials, statistics). It reads nothing, so there's no approval card.
+- **Undo and cancel:** "undo that", "put the volume back", "cancel the tea timer", "never mind the
+  shutdown", "clear all my reminders". Sprout reverses what it did earlier; files are never deleted.
 
 Each action shows a card saying exactly what will happen ("Set volume to 30%"). Turn actions off in
 Settings ("Let Sprout act on this laptop") and Sprout goes back to reading only.
+
+### General abilities: a Python sandbox and plug-ins
+
+Instead of a new special-purpose tool for every kind of question, Sprout has two general mechanisms:
+
+- **`run_python`:** the model writes a short Python program and Sprout runs it in
+  [Pydantic Monty](https://github.com/pydantic/monty), a locked-down Python interpreter written in
+  Rust. It runs in its own process with no files, network, programs or environment variables, a
+  5-second limit and 256 MB of memory. It covers dates, conversions, sorting, counting, text and
+  multi-step calculations. Sprout lends it pure functions (`calendar`, `statistics`, `string`, the
+  exact calculator and number words) and the laptop's time zone.
+- **MCP plug-ins** (`app/mcp.json`, `app/mcp_host.py`): Sprout is a host for the
+  [Model Context Protocol](https://modelcontextprotocol.io), the common plug-in format for AI tools,
+  so existing tool servers work without new code. Each plug-in tool reaches the model only if
+  `mcp.json` lists it, with Sprout's rules: which approval card it needs, arguments Sprout fixes
+  itself, allowed and blocked values, and the card's wording.
+  - **Memory** (the reference `server-memory`): remembers lasting facts you tell it (people, your
+    devices, preferences) across chats. Each save is approved on a card; "forget …" shows exactly
+    which stored facts will go. The facts are stored in `app-data\memory.jsonl` on this laptop.
+  - **Windows-MCP** (operating any app by its buttons and fields) is included but **switched off**:
+    its screen reading walks every window through UI Automation, and with it running VS Code hung
+    twice. It stays off until a version exists that never touches other apps' windows.
+
+### Voice mode
+
+Tap the microphone button and talk. Sprout answers aloud, and both sides appear in the chat as usual.
+It is the same model and personality, answering in a spoken style. Talk over it to interrupt; tap the
+button again to stop.
+
+- **Offline, on the CPU** (sherpa-onnx): Silero VAD notices when you start and stop talking, NVIDIA
+  Parakeet 110M turns your speech into text (about 0.1 s), and Kokoro-82M speaks the reply sentence
+  by sentence while it is still being written.
+- **12 natural voices**, male and female, American and British. Choose one in Settings and press
+  Preview to hear it. The default is Michael.
+- The voice models load when voice mode starts and are freed when it stops (about 0.7 GB of RAM).
+  With Gemma 26B on 16 GB, replies start about 4–5 s after you stop talking while Chrome and VS Code
+  are open, and sooner with more free RAM.
 
 ## How it stays light
 
@@ -80,7 +122,10 @@ flowchart LR
   W["Sprout window<br/>(WebView2 via pywebview)"] -->|"same-origin HTTP<br/>127.0.0.1:8765"| B["app/server.py<br/>Python backend"]
   B -->|"random API key<br/>127.0.0.1:8766"| C["llama-server<br/>chat model (Gemma 4 QAT / gpt-oss)"]
   B -->|"random API key<br/>127.0.0.1:8767"| E["llama-server (CPU)<br/>EmbeddingGemma 2"]
-  B --> T["app/tools.py<br/>read-only laptop tools"]
+  B --> T["app/tools.py<br/>laptop tools, calculator"]
+  B --> S["Monty sandbox<br/>(run_python)"]
+  B -->|"stdio JSON-RPC"| M["MCP plug-ins<br/>(Memory)"]
+  B --> VO["voice.py: VAD, Parakeet,<br/>Kokoro (CPU)"]
   B --> D[("LLM_HOME/app-data<br/>chats, Library, settings")]
 ```
 
@@ -158,7 +203,21 @@ the models.
    This adds a desktop and Start-menu icon, a Startup entry (`--background`) and the
    Explorer menu, all for the current user only, with no admin rights.
    `app\uninstall.ps1` removes them.
-5. Open **Sprout** and put your name in Settings, so it knows who it works for.
+5. **Optional, the Memory plug-in** (needs Node.js). Give it its own folder with its own
+   `package.json` first; without one, npm installs into the nearest parent folder that has one:
+
+   ```powershell
+   $m = "$env:USERPROFILE\llm\mcp\memory"; New-Item -ItemType Directory -Force $m | Out-Null
+   Set-Content "$m\package.json" '{ "name": "sprout-mcp-memory", "private": true }'
+   npm install --prefix $m --ignore-scripts --save-exact @modelcontextprotocol/server-memory@2026.8.31
+   ```
+
+   Without it, Sprout simply runs without memory.
+6. **Optional, voice mode:** download the voice models from the official sherpa-onnx releases
+   (`k2-fsa/sherpa-onnx`, tags `asr-models` and `tts-models`) into `%USERPROFILE%\llm\models\voice`:
+   `silero_vad.onnx`, `sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8` and
+   `kokoro-multi-lang-v1_0` (unpack the archives). Without them, voice mode simply says it isn't installed.
+7. Open **Sprout** and put your name in Settings, so it knows who it works for.
 
 To run it without installing: `python app\server.py` (or `--background`, `--model gptoss`,
 `--quit-on-close`).
@@ -167,7 +226,7 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 72 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 82 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sprout_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sprout_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sprout_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |

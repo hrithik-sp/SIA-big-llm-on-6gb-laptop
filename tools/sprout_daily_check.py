@@ -140,12 +140,13 @@ def scenarios():
                      " | ".join(f"{r['user']}: {r['tools']}" for r in rs))),
         ("long chat", "chat", ["__LONG__", "when and where is my demo?"],
          lambda rs: (not rs[-1]["errors"] and "friday" in rs[-1]["answer"].lower(), f"errors {rs[-1]['errors']}: {rs[-1]['answer'][:60]!r}")),
-        ("unknown fact", "chat", ["when is my exam?"],
+        # something never mentioned: an earlier scenario tells Sprout about an exam, and Memory now keeps it
+        ("unknown fact", "chat", ["when is my dentist appointment?"],
          # honest either way: "I don't know", or a real search (a tool ran) that found nothing; never an invented date
          lambda rs: ((bool(re.search(r"don't know|haven't (told|mentioned|said)|didn't (tell|mention|say)|not sure|no idea|"
                                      r"don't have|can't see", rs[0]["answer"], re.I))
                       or (bool(rs[0]["tools"]) and bool(re.search(r"(couldn't|could not|didn't|did not) find|nothing (came up|about)|"
-                                                                   r"no (exam|files?|dates?)", rs[0]["answer"], re.I))))
+                                                                   r"no (appointment|exam|files?|dates?)", rs[0]["answer"], re.I))))
                      and not re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", rs[0]["answer"], re.I),
                      f"tools {rs[0]['tools']}: {rs[0]['answer'][:80]!r}")),
         ("other chats", "chat", ["what did we talk about yesterday?"],
@@ -192,7 +193,11 @@ def main():
     (tmp / "settings.json").write_text(json.dumps({"user_name": "Hrithik S P", "laptop_access": True}))
     code = ("import sys, pathlib; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
-            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.main(sys.argv[1:])")
+            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
+    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    with socket.socket() as s:
+        if s.connect_ex(("127.0.0.1", 8765)) == 0:
+            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=dict(os.environ))
     for _ in range(120):
         try:

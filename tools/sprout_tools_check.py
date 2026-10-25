@@ -3,6 +3,8 @@ tool, does the permission flow work (approve and deny), and does the answer use 
 
   python tools/sprout_tools_check.py
   python tools/sprout_tools_check.py "What time is it?" "Where am I?"   (your own questions, all approved)
+  add --chat to ask them as one conversation (follow-ups like "any left?"), --deny to decline every card,
+  --deny-actions to approve reads but decline every action, --mode=think (or study, code, ...) for another mode
 Starts Sprout without a window on a temporary settings file (laptop access on, nothing
 always-allowed), then quits it. The user's own settings are untouched.
 """
@@ -28,8 +30,8 @@ def call(method, path, body=None, timeout=60):
     return r.status, json.loads(data) if data else None
 
 
-def chat(mode, text, model=None, decide="once"):
-    body = {"mode": mode, "messages": [{"role": "user", "content": text}]}
+def chat(mode, text, model=None, decide="once", history=None):
+    body = {"mode": mode, "messages": (history or []) + [{"role": "user", "content": text}]}
     if model:
         body["model"] = model
     c = http.client.HTTPConnection("127.0.0.1", 8765, timeout=1800)
@@ -42,7 +44,8 @@ def chat(mode, text, model=None, decide="once"):
         ev = json.loads(line[6:])
         if ev.get("type") == "tool_request":
             events.append(f"asked: {ev['label']}")
-            call("POST", "/api/tool-decision", {"id": ev["id"], "decision": decide})
+            d = "deny" if decide == "deny-actions" and ev.get("action") else decide.replace("deny-actions", "once")
+            call("POST", "/api/tool-decision", {"id": ev["id"], "decision": d})
         elif ev.get("type") == "tool":
             events.append(f"{ev['status']}: {ev['label']}")
         elif ev.get("type") == "error":
@@ -59,7 +62,11 @@ def main():
     env = dict(os.environ)
     code = ("import sys, runpy; sys.argv=['server.py','--no-browser','--model','gemma']; "
             f"import pathlib; sys.path.insert(0, r'{ROOT / 'app'}'); import server; "
-            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.main(sys.argv[1:])")
+            f"server.SETTINGS_FILE = pathlib.Path(r'{tmp / 'settings.json'}'); server.DATA = pathlib.Path(r'{tmp}'); server.ACTIONS_LOG = server.DATA / 'actions.log'; server.main(sys.argv[1:])")
+    import socket  # never test against the owner's running Sprout: it would get the questions and the actions
+    with socket.socket() as s:
+        if s.connect_ex(("127.0.0.1", 8765)) == 0:
+            sys.exit("Sprout is already running on port 8765. Quit it first (power button), then rerun.")
     srv = subprocess.Popen([sys.executable, "-c", code], cwd=str(ROOT), env=env)
     for _ in range(120):
         try:
@@ -75,11 +82,17 @@ def main():
         ("chat", "What's my GPU temperature?", None, "deny"),
         ("think", "How much free space is on my C drive?", "gptoss", "once"),
     ]
-    if len(sys.argv) > 1:
-        tests = [("chat", q, None, "once") for q in sys.argv[1:]]
+    questions = [q for q in sys.argv[1:] if not q.startswith("--")]
+    mode = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--mode=")), "chat")
+    decide = "deny" if "--deny" in sys.argv else "deny-actions" if "--deny-actions" in sys.argv else "once"
+    if questions:  # --deny: see what the model would do, without letting any action happen
+        tests = [(mode, q, None, decide) for q in questions]
+    history = [] if "--chat" in sys.argv else None
     try:
         for mode, q, model, decide in tests:
-            a, ev, s = chat(mode, q, model, decide)
+            a, ev, s = chat(mode, q, model, decide, history)
+            if history is not None:
+                history += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
             print(f"\n> {q}  [{model or 'gemma'}, decision={decide}]\n  tools: {ev}\n  answer ({s:.0f}s): {a[:300]}", flush=True)
     finally:
         call("POST", "/api/quit", {})
