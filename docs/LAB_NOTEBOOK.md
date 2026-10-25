@@ -1593,6 +1593,28 @@ Goal: Sprout separate from Edge, quick and smooth.
       and only real words stop it. An echo of what it just said (also checked for 3 s after it stops), a short
       "okay" or "mm-hm", or noise resumes it, and the first 0.7 s of a reply never pauses it.
 
+63. **A faster first reply: the warm-up is saved and restored instead of re-read.**
+    - **Why:** after Sprout starts, or wakes from its 10-minute idle sleep, it pre-reads its instructions and tool
+      definitions (5,940 tokens). Under real memory pressure that takes about 30 s, and a message sent meanwhile
+      waits behind it.
+    - **How:** llama-server can save a slot's processed prompt state to disk and restore it (`--slot-save-path`,
+      `POST /slots/0?action=save|restore`; `tools/server/server-context.cpp`). The save also covers the context
+      checkpoints for Gemma's sliding-window layers and the MTP draft state. Sprout saves the warm-up once, under a
+      name hashed from the exact system prompt, tools and model, and restores it on later starts and wakes. It is
+      lossless: llama-server's own state for exactly that text, and on restore it reuses only the part that matches
+      the new prompt, so a stale file can't change an answer.
+    - **Measured** (`tools/sprout_coldstart_check.py`; a message sent the moment the model is up; 10.5 GB free
+      before start):
+
+      | | Re-read the prompt | Restore the saved warm-up |
+      |---|---|---|
+      | Preparing the 5,940-token prompt | ~30 s | 1.6 s |
+      | Message sent → first word | 46.8 s | **20.7 s** |
+
+      The remaining ~20 s is the model's experts being paged in from the SSD by the first answer. The file is
+      1.1 GB in `app-data\kv` (one per model), written once and rewritten only when the instructions or model
+      change.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |

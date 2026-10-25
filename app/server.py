@@ -18,6 +18,7 @@ Design notes and measurements: docs/SPROUT.md and docs/LAB_NOTEBOOK.md ("Sprout"
 import argparse
 import base64
 import ctypes
+import hashlib
 import http.client
 import http.server
 import io
@@ -197,9 +198,11 @@ class ChatModel:
                 return
             self._stop()
             self.name, self.status, self.error = name, "loading", None
+            (DATA / "kv").mkdir(parents=True, exist_ok=True)  # saved warm-up prompts (see preload)
             p = spawn("chat", [str(BIN / "llama-server.exe"), *preset_args(name), "--host", "127.0.0.1",
                                "--port", str(CHAT_PORT), "--api-key", STATE["key"],
-                               "--sleep-idle-seconds", str(SLEEP_IDLE_S), "--no-ui"])
+                               "--sleep-idle-seconds", str(SLEEP_IDLE_S), "--no-ui",
+                               "--slot-save-path", str(DATA / "kv")])
             for _ in range(1200):  # up to 10 min (cold start from SSD)
                 if p.poll() is not None:
                     self.status, self.error = "error", f"{NAMES[name]} failed to load (app-data/logs/chat.log)"
@@ -241,6 +244,38 @@ class ChatModel:
 CHAT = ChatModel()
 
 
+def warm_file(name, body):
+    """Where the pre-read instructions and tools are kept, named by what they contain: any change to the system
+    prompt, the tools or the model gives a new name, so a stale file is never used."""
+    key = json.dumps([name, PRESETS[name], body["messages"][0], body.get("tools"), body.get("chat_template_kwargs")],
+                     sort_keys=True, default=str)
+    return DATA / "kv" / f"warm-{name}-{hashlib.sha256(key.encode()).hexdigest()[:16]}.bin"
+
+
+def restore_warm(path):
+    """Load the saved warm-up into the model instead of re-reading ~5,700 tokens (lossless: llama-server's own
+    state for exactly that text, and it reuses only the part that matches the new prompt). Measured in finding 63."""
+    try:
+        t0 = time.time()
+        st, r = llama("POST", CHAT_PORT, "/slots/0?action=restore", {"filename": path.name}, timeout=120)
+        log_line(f"restored {path.name}: HTTP {st}, {(r or {}).get('n_restored')} tokens in {time.time() - t0:.1f} s")
+        return st == 200 and bool((r or {}).get("n_restored"))
+    except (OSError, ValueError) as e:
+        log_line(f"restore failed: {e}")
+        return False
+
+
+def save_warm(path):
+    try:
+        for old in path.parent.glob(f"warm-{path.name.split('-')[1]}-*.bin"):  # keep one file per model
+            if old != path:
+                old.unlink()
+        st, r = llama("POST", CHAT_PORT, "/slots/0?action=save", {"filename": path.name}, timeout=300)
+        log_line(f"saved {path.name}: HTTP {st}, {(r or {}).get('n_saved')} tokens, {(r or {}).get('n_written')} bytes")
+    except (OSError, ValueError) as e:
+        log_line(f"save failed: {e}")
+
+
 def preload(name):
     """Load the model, or wake it if it is asleep, ahead of the first message; then pre-read the
     Chat instructions and tool list, so the first message only has to process its own words."""
@@ -253,7 +288,11 @@ def preload(name):
                                         "messages": [{"role": "user", "content": "hi"}]})
             body.pop("tool_choice", None)
             body.update(stream=False, max_tokens=1)  # also wakes a sleeping server
+            saved = warm_file(name, body)
+            restored = saved.exists() and restore_warm(saved)
             llama("POST", CHAT_PORT, "/v1/chat/completions", body, timeout=600)
+            if not restored:
+                save_warm(saved)
         else:
             llama("POST", CHAT_PORT, "/v1/chat/completions",  # any task wakes a sleeping server
                   {"messages": [{"role": "user", "content": "hi"}], "max_tokens": 1}, timeout=600)

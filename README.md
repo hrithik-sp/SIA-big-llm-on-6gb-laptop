@@ -131,7 +131,7 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (62 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (63 findings) |
 | [`docs/SPROUT.md`](docs/SPROUT.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
@@ -174,7 +174,8 @@ run it. Next, in order:
    disks, battery wear), explain it plainly, and, with approval, apply the fix.
 3. **A faster first reply.** Keep the model ready longer when memory allows, or prefetch it from
    the SSD, so the first message after a break isn't ~40 s. Measured cause: the start-up pre-read of
-   the ~5,700-token instruction and tool prompt, so a leaner tool prompt is the next step.
+   the ~5,700-token instruction and tool prompt. Now saved once and restored at start: the first
+   reply after a start or wake went from 46.8 s to 20.7 s; the rest is the model paging in from the SSD.
 4. ~~**Memory you control.**~~ Done: remembers preferences and facts you tell it, stored locally;
    each save is approved and "forget …" shows exactly what goes.
 5. **See the screen.** "What am I looking at?" through the vision model, with permission.
