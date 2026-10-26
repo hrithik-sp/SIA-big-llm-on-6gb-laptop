@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.2.1 (prepared, not yet released): voice in a busy room
+## v1.2.1: voice in a busy room
 
 - **Speaks as soon as it writes:** people talking nearby no longer hold Sia's first words back (the voice now
   starts 1–2 s after the text instead of ~5 s).

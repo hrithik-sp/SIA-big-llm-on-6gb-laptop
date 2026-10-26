@@ -5,9 +5,9 @@
 <h1 align="center">SIA: big LLMs on a 6 GB laptop</h1>
 
 <p align="center">
-  A 26-billion-parameter model on an RTX 3050 laptop (6 GB VRAM, 16 GB RAM) at 12–35 tokens/s,<br>
-  <b>without shrinking its intelligence</b>: every speed-up measured, every quality cost quantified,<br>
-  and packaged as <b>Sia</b>, a private, offline desktop AI.
+  Google's Gemma 4 26B-A4B (mixture-of-experts, ~4B active per token) on an RTX 3050 laptop (6 GB VRAM, 16 GB RAM):<br>
+  <b>near-lossless at 12 tokens/s, or 31–35 tokens/s at a measured 4.8-point MMLU-Pro cost</b>.<br>
+  Every speed-up measured, every quality cost quantified, and packaged as <b>Sia</b>, a private, offline desktop AI.
 </p>
 
 <p align="center">
@@ -18,8 +18,8 @@
   <img src="https://img.shields.io/badge/Windows%2011-RTX%203050%206%20GB-555" alt="Windows 11, RTX 3050 6 GB">
 </p>
 
-<p align="center"><b>v1.2.0</b>: Sia acts on your laptop with your approval, talks and listens ("Hey Sia"),
-and runs an exact calculator and a Python sandbox. <a href="CHANGELOG.md">What's new</a></p>
+<p align="center"><b>v1.2.1</b>: voice that works in a busy room: Sia speaks as soon as it writes, hears your name,
+and answers settings commands twice as fast. <a href="CHANGELOG.md">What's new</a></p>
 
 <p align="center">
   <img src="docs/images/sia-study.png" alt="Sia explaining Dijkstra's algorithm in Study mode, running Gemma 4 26B locally" width="860">
@@ -63,7 +63,8 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
    from failing to finish hard questions. Its predictions differ from the original's as much
    as a 2-bit quantization's do. Because QAT is a re-trained model, not a compressed copy, only
    task accuracy can judge it.
-3. **Speculative decoding depends on the model.** Gemma's own MTP head gives 1.32×. gpt-oss's
+3. **Speculative decoding depends on the model.** Gemma's own MTP head gives 1.32× at temperature 0
+   (26.4 → 34.9 tok/s) and 1.25× at Google's recommended sampling (25.0 → 31.3 tok/s). gpt-oss's
    EAGLE-3 draft makes it 22% *slower*, because checking several tokens loads the union of
    their experts, and many sit in RAM.
 4. **Threads follow where the weights live:** 16 threads speed up SSD streaming by 21%, but
@@ -93,7 +94,7 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
 </table>
 
 The full story, including the wrong turns and how each was caught, is in
-**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 50 problems with how
+**[REPORT.md](REPORT.md)**: the journey, every comparison explained, and 69 problems with how
 each was solved.
 
 ## Sia
