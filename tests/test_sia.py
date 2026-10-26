@@ -294,7 +294,7 @@ class SettingsAndTools(unittest.TestCase):
             body, _, _ = server.build_request({"mode": "chat", "voice": True,
                                                "messages": [{"role": "user", "content": text}]})
             self.assertEqual(body.get("tool_choice") == "required", forced, text)
-            self.assertEqual("run_python (datetime)" in body["messages"][-1]["content"], forced, text)
+            self.assertEqual("days until a date are calendar days" in body["messages"][-1]["content"], forced, text)
 
     def test_day_questions_get_the_coming_weekdays(self):
         def note(text):
@@ -720,6 +720,33 @@ class Voice(unittest.TestCase):
                 t.join(2)
                 self.assertTrue(ev["addressed"], said)
                 self.assertEqual(L.awake_until > 0, open_after, said)
+        finally:
+            v.transcribe = orig
+
+    def test_request_after_bare_wake_is_for_sia(self):
+        """"Hey Sia." then the request: the request is marked after_wake (never treated as overheard talk); a line in a
+        window the page reopened after an answer is not."""
+        import queue
+        import threading
+        v = server.voice
+        orig = v.transcribe
+        try:
+            L = v.Listener.__new__(v.Listener)
+            L.mode, L.closed, L.events, L.work = "wake", False, queue.Queue(), queue.Queue()
+            L.parts, L.hold_until, L.turn_lock, L.in_speech, L.fed, L.awake_until = [], None, threading.Lock(), False, 0, 0
+            said = iter(["Hey Sia.", "Hrithik S P.", "And tomorrow?"])
+            v.transcribe = lambda seg: next(said)
+            t = threading.Thread(target=L._transcriber, daemon=True)
+            t.start()
+            L.work.put((server.np.zeros(1600, server.np.float32), False, True))
+            self.assertEqual(L.events.get(timeout=5)["request"], "")
+            L.work.put((server.np.zeros(1600, server.np.float32), True, False))  # in the window "Hey Sia." opened
+            self.assertTrue(L.events.get(timeout=5)["after_wake"])
+            L.awake(8)  # the page reopened it after Sia answered
+            L.work.put((server.np.zeros(1600, server.np.float32), True, False))
+            self.assertFalse(L.events.get(timeout=5)["after_wake"])
+            L.closed = True
+            t.join(2)
         finally:
             v.transcribe = orig
 

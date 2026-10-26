@@ -278,9 +278,17 @@ def save_warm(path):
         log_line(f"save failed: {e}")
 
 
+PRELOAD_LOCK = threading.Lock()  # two window shows at start once restored the 1.2 GB warm-up twice
+
+
 def preload(name):
     """Load the model, or wake it if it is asleep, ahead of the first message; then pre-read the
     Chat instructions and tool list, so the first message only has to process its own words."""
+    with PRELOAD_LOCK:
+        _preload(name)
+
+
+def _preload(name):
     try:
         state = CHAT.states().get(name)
         if state == "loaded" and CHAT.primed:
@@ -1086,7 +1094,8 @@ def build_request(req):
         calc_note = (" Compute every number in this reply with the calculate tool and quote its result exactly."
                      if is_math(last_text) and not wants_action(last_text) else "")
         if DATE_SPAN_RX.search(last_text):
-            calc_note += " Work out dates and the time between them with run_python (datetime), never by counting."
+            calc_note += (" Work out dates and the time between them with run_python, never by counting; days until a "
+                          "date are calendar days: date objects (date.today()), not datetimes.")
         memory = ""
         host = tools.MCP["host"]
         if host and "memory" in host.servers and not mode.get("rag"):
@@ -1412,7 +1421,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             old, STATE["listener"] = STATE.get("listener"), voice.Listener(load_settings()["voice_listen"])
             if old:
                 old.close()
-            return self._json({"ok": True, "voice": load_settings()["voice_name"], "listen": STATE["listener"].mode})
+            return self._json({"ok": True, "voice": load_settings()["voice_name"], "listen": STATE["listener"].mode,
+                               "record": bool(voice.RECORD["dir"])})
+        if what == "log":  # voice_record on: the page notes what it did with each line (answered, ignored, ...)
+            if voice.RECORD["dir"]:
+                note = json.loads(self._body() or b"{}")
+                voice.record_note({"page": str(note.get("what", ""))[:40], "text": str(note.get("text", ""))[:300],
+                                   "detail": str(note.get("detail", ""))[:300]})
+            return self._json({"ok": True})
         if what == "preview":  # Settings: hear a voice before choosing it (loads only the voice, not the mic)
             req = json.loads(self._body() or b"{}")
             name = req.get("voice") if req.get("voice") in voice.VOICE_IDS else voice.DEFAULT_VOICE

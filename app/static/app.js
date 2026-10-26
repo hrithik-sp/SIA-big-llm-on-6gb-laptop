@@ -502,6 +502,7 @@ async function stream() {
     if (V.on && !V.playing && !V.say.length) voiceState("idle");
   }
   if (followup && !am.error && am.answer.trim() === NO_REPLY) {  // not said to Sia: drop it, say nothing
+    vlog("dropped: Sia judged it not meant for it", S.chat.messages.length ? S.chat.messages[S.chat.messages.length - 1].content : "");
     const u = v.d.previousElementSibling;
     v.d.remove(); if (u && u.classList.contains("user")) u.remove();
     if (S.chat.messages.length && S.chat.messages[S.chat.messages.length - 1].role === "user") S.chat.messages.pop();
@@ -572,7 +573,7 @@ async function toggleVoice() {
   V.starting = true; $("#voice").disabled = true; toast("Getting voice ready…", 15000);
   try {
     const started = await post("/api/voice/start");
-    V.listen = started.listen || "always"; V.muted = false;
+    V.listen = started.listen || "always"; V.muted = false; V.record = !!started.record;
     V.mic = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     V.ctx = new AudioContext();
     await V.ctx.audioWorklet.addModule("/static/voice-worklet.js");
@@ -645,6 +646,10 @@ const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]
 // talking nearby is never answered, and while Sia speaks only "Hey Sia", "stop" or "wait" interrupt it.
 // (In always-listening mode a friend's conversation was answered line by line.)
 const STOP_RX = /^\W*(stop|wait|hold on|shut up|enough|pause|be quiet|quiet|cancel)\b/i;
+// "Hey Sia, stop" heard as "Hey Sop." or "Hey, stop": neither the wake phrase nor a stop word on its own
+const HEY_STOP_RX = /^\W*(?:hey|hi|ok|okay)\W+(?:\w+\W+)?(?:sop|stop|wait|enough|cancel)\b/i;
+// voice_record on: what the page did with each line goes into the session record next to what was heard
+function vlog(what, text, detail) { if (V.record) post("/api/voice/log", { what, text, detail }).catch(() => {}); }
 // "pause listening" works like the pause button ("Pause listening." once went to the model, which ran tools)
 const PAUSE_LISTEN_RX = /^\W*(?:(?:please|can you|could you)\s+)?(?:(?:pause|stop|mute)\s+(?:listening|the mic|the microphone|your mic)|stop listening|don.?t listen|mute yourself)\b/i;
 function onVoiceEvent(ev) {
@@ -660,32 +665,43 @@ function onVoiceEvent(ev) {
     clearTimeout(V.resumeTimer);
     const speaking = (V.playing && !V.playingAck) || V.say.some((x) => !x.ack) || V.paused;  // "Yes?" isn't an answer
     if (!ev.addressed) {  // someone else talking, or the user not addressing Sia
-      if ((speaking || S.streaming) && STOP_RX.test(ev.text)) { bargeIn(); voiceState("idle"); }
-      else resumeSpeech();
+      if ((speaking || S.streaming) && (STOP_RX.test(ev.text) || HEY_STOP_RX.test(ev.text))) {
+        bargeIn(); voiceState("idle"); vlog("stopped", ev.text);
+      } else { resumeSpeech(); vlog("ignored: not addressed", ev.text); }
       return;
     }
     const justSpoke = performance.now() - V.lastEnd < 3000;  // recognition ends ~0.6 s after the sound does
-    if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) { resumeSpeech(); return; }
+    if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) {
+      resumeSpeech(); vlog("ignored: echo or backchannel", ev.text); return;
+    }
     const text = ev.wake ? ev.request : ev.text;  // the server strips the wake phrase
     if (PAUSE_LISTEN_RX.test(text)) {
       if (speaking || S.streaming) bargeIn();
       if (!V.muted) toggleListening();
       queueSpeech("Okay, I've stopped listening. Press pause again when you want me back.");
+      vlog("paused listening", text);
       return;
     }
-    if ((speaking || S.streaming) && STOP_RX.test(text)) { bargeIn(); voiceState("idle"); return; }
+    if ((speaking || S.streaming) && (STOP_RX.test(text) || HEY_STOP_RX.test(ev.text))) {
+      bargeIn(); voiceState("idle"); vlog("stopped", ev.text); return;
+    }
     // while Sia answers, only "Hey Sia" (or stop words) interrupt it: a follow-up line once cut a reply off and was
     // then itself dropped as not meant for Sia, so the owner lost both
-    if ((speaking || S.streaming) && !ev.wake && V.listen === "wake") { resumeSpeech(); return; }
+    if ((speaking || S.streaming) && !ev.wake && !ev.after_wake && V.listen === "wake") {
+      resumeSpeech(); vlog("ignored: Sia was answering", ev.text); return;
+    }
     if (speaking || S.streaming) bargeIn();  // real words: Sia stops and answers them
     voiceState("idle");
     if (!/\w/.test(text)) {  // just "Hey Sia": listen for the request, and say "Yes?" only if it doesn't follow
-      followUp();
+      // (the server has opened the window for the request; reopening it here would make the request a follow-up)
+      vlog("wake only", ev.text);
       clearTimeout(V.ackTimer);
       V.ackTimer = setTimeout(sayAck, 400);
       return;
     }
-    askByVoice(text.charAt(0).toUpperCase() + text.slice(1), V.listen === "wake" && !ev.wake);
+    const followup = V.listen === "wake" && !ev.wake && !ev.after_wake;
+    vlog(followup ? "asked (follow-up)" : "asked", text);
+    askByVoice(text.charAt(0).toUpperCase() + text.slice(1), followup);
   } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
 }
@@ -739,6 +755,7 @@ async function previewVoice() {
   finally { btn.disabled = false; btn.textContent = "Preview"; }
 }
 function bargeIn() {
+  if (S.streaming || V.playing) vlog("interrupted Sia's reply", "");
   V.gen++; V.say = []; V.pending = "";
   if (V.playing) { try { V.playing.stop(); } catch {} V.playing = null; }
   if (V.paused) { V.paused = false; if (V.out) V.out.resume().catch(() => {}); }
@@ -815,7 +832,7 @@ function playNext() {
   if (!V.on || V.playing || !V.out) return;
   V.say = V.say.filter((x) => x.gen === V.gen);
   const item = V.say[0];
-  if (!item) { voiceState("idle"); if (!S.streaming) followUp(); return; }
+  if (!item) { voiceState("idle"); if (!S.streaming && !V.ackLast) followUp(); return; }  // after "Yes?" it's open
   if (!item.audio) return;  // still being made
   V.say.shift();
   if (item.audio === "skip") { playNext(); prefetchSpeech(); return; }
@@ -824,7 +841,7 @@ function playNext() {
   if (performance.now() - V.lastEnd > 1500) V.speakingSince = performance.now();  // a new stretch of speech begins
   V.recent.push({ text: item.text, t: performance.now() }); V.recent = V.recent.slice(-8);
   if (V.tText != null && V.gap == null) { V.gap = (performance.now() - V.tText) / 1000; (V.gaps = V.gaps || []).push(V.gap); }
-  V.playing = src; V.playingAck = !!item.ack; src.start(); voiceState("speaking");
+  V.playing = src; V.playingAck = V.ackLast = !!item.ack; src.start(); voiceState("speaking");
   prefetchSpeech();
 }
 

@@ -239,12 +239,25 @@ def load(voice=DEFAULT_VOICE, stt="fast", owner=""):
 
 OWNER = {"name": ""}
 # Settings voice_record (off by default): keep what was heard, to tune recognition on the owner's own voice
-RECORD = {"dir": None, "max": 40}
+RECORD = {"dir": None, "max": 400}  # a whole session (40 filled up mid-way once)
 
 
-def keep_sample(audio, raw, text):
-    """Save one heard line (16 kHz WAV) and its transcripts (raw, after fix_names) in RECORD["dir"]; up to max."""
+def record_note(entry):
+    """Append one line to the session record (heard.jsonl): what was heard, or what the page did with it."""
     import json
+    d = RECORD["dir"]
+    if not d:
+        return
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / "heard.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"time": time.strftime("%H:%M:%S"), **entry}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def keep_sample(audio, raw, text, info=None):
+    """Save one heard line (16 kHz WAV) and its transcripts (raw, after fix_names) in RECORD["dir"]; up to max."""
     d = RECORD["dir"]
     try:
         d.mkdir(parents=True, exist_ok=True)
@@ -257,8 +270,7 @@ def keep_sample(audio, raw, text):
             w.setsampwidth(2)
             w.setframerate(RATE)
             w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
-        with open(d / "heard.jsonl", "a", encoding="utf-8") as f:
-            f.write(json.dumps({"file": name, "raw": raw, "text": text}, ensure_ascii=False) + "\n")
+        record_note({"file": name, "raw": raw, "text": text, **(info or {})})
     except OSError:
         pass
 
@@ -457,6 +469,7 @@ class Listener:
     def awake(self, seconds):
         """Open (or close, with 0) the follow-up window: speech starting in it needs no wake phrase."""
         self.awake_until = self.fed + int(seconds * RATE) if seconds > 0 else 0
+        self.wake_window = False  # set by the transcriber when a bare "Hey Sia" opened it
 
     def _spotted(self, start, end):
         return any(start - RATE <= h <= end + WAKE_LEAD for h in self.wake_hits)
@@ -550,20 +563,26 @@ class Listener:
             except Exception as e:  # report, keep listening
                 self.events.put({"type": "error", "error": f"speech recognition failed: {e}"})
                 continue
-            if RECORD["dir"]:
-                keep_sample(seg, raw, text)
             if re.search(r"\w", text):
                 woke, request = wake_split(text, spotted) if self.mode == "wake" else (False, text)
+                # in the window a bare "Hey Sia" opened, the request is meant for Sia as surely as with the wake
+                # phrase (as a follow-up it could be dropped as overheard: the owner's name after "Yes?" was)
+                after_wake = in_window and getattr(self, "wake_window", False)
                 if woke and not request:
                     self.awake(FOLLOW_UP_S)  # just "Hey Sia": the request follows after a pause
+                    self.wake_window = True
                 elif in_window or woke:
                     # a request was taken: the window reopens when Sia has answered (the page's followUp). Left
                     # open, people talking nearby during the reply counted as addressed and held its voice back.
                     self.awake(0)
-                self.events.put({"type": "transcript", "text": text, "addressed": in_window or woke, "wake": woke,
-                                 "request": request, "seconds": round(len(seg) / RATE, 2)})
+                ev = {"type": "transcript", "text": text, "addressed": in_window or woke, "wake": woke,
+                      "after_wake": after_wake, "spotted": spotted, "request": request,
+                      "seconds": round(len(seg) / RATE, 2)}
             else:
-                self.events.put({"type": "speech_end"})  # a cough or noise: nothing to answer
+                ev = {"type": "speech_end"}  # a cough or noise: nothing to answer
+            if RECORD["dir"]:
+                keep_sample(seg, raw, text, {k: ev.get(k) for k in ("addressed", "wake", "after_wake", "spotted")})
+            self.events.put(ev)
 
     def close(self):
         self.closed = True
