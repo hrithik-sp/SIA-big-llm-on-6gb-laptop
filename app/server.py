@@ -1595,18 +1595,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 body["messages"].append({"role": "assistant", "content": content, "tool_calls": [
                     {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["args"] or "{}"}}
                     for c in calls]})
-                declined = []
+                declined, quick = [], []
                 for c in calls:
                     result = self._use_tool(c, emit)
                     if isinstance(result, dict) and "error" not in result:
                         used.add(c["name"])
                     declined.append(result.get("declined") if isinstance(result, dict) else None)
+                    try:
+                        quick.append(tools.actions.done_text(c["name"], json.loads(c["args"] or "{}"), result))
+                    except ValueError:
+                        quick.append(None)
                     body["messages"].append({"role": "tool", "tool_call_id": c["id"],
                                              "content": json.dumps(result, ensure_ascii=False)[:TOOL_RESULT_CHARS]})
                 if all(declined):  # every action declined: say so in fixed words. The model once answered
                     # "Shutdown cancelled." after the user declined "Cancel the restart/shutdown".
                     text = "Okay, not done. Nothing changed (" + "; ".join(declined) + ")."
                     emit({"choices": [{"index": 0, "delta": {"content": text}}]})
+                    break
+                said = tools.actions.USER_TEXT["text"] or ""
+                if all(quick) and "?" not in said and not re.search(r"\b(and|then|also)\b", said, re.I):
+                    # a plain settings command that worked: its result is the reply ("Volume is at 100%"), with no
+                    # second model pass (that pass took ~4 s just to say so)
+                    emit({"choices": [{"index": 0, "delta": {"content": ("\n\n" if (content or "").strip() else "")
+                                                                         + " ".join(quick)}}]})
                     break
             emit({"type": "done"})
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):

@@ -1868,6 +1868,16 @@ Goal: Sprout separate from Edge, quick and smooth.
       - Also: one warm-up restore at start (two window shows had restored it twice); days until a date counted as
         calendar days (New Year: 67, it had said 66); the memory card's empty "This changes your laptop: it ." now
         says what a save does.
+    - **"It's slow" (session 4).** From the engine log: each voice turn re-reads ~340 tokens (the message and Sia's
+      note), 2.8 s at 120 tok/s, or 8.3 s at 41 tok/s when the CPU-side experts had been paged out (8.9 GB free,
+      10.4 GB needed); answers stream at 16–27 tok/s; a command takes two model passes. llama-bench, same placement,
+      `GGML_OP_OFFLOAD_MIN_BATCH` default (copy the CPU experts to the GPU for batches of 32+ tokens) against "never"
+      (A-B-A): pp64 25 / 48 / 26, pp128 89 / 82 / 101, pp256 175 / 93 / 204, pp384 257 / 94 / 298 tok/s. At Sia's ~340
+      tokens the default is ~3× faster, so it stays, and the copy is a ~1.3 s fixed cost per turn, so a shorter note
+      would save little. What was changed: a plain settings command that worked (volume, mute, brightness,
+      Bluetooth/Wi-Fi, theme) is answered from the tool's own result ("Volume is at 100% (was 50%)") without the
+      second model pass: 2–5 s instead of ~10 s. A request with a question or another task in it still goes to the
+      model. The rest is the RAM shortfall (finding 68): closing heavy apps while using Sia helps most.
 
 ## Optimization candidates (each must be measured before it counts)
 

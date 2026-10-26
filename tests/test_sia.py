@@ -287,6 +287,18 @@ class SettingsAndTools(unittest.TestCase):
         finally:
             server.CHAT.states, server.CHAT.ensure, server.restore_warm, server.CHAT.primed = orig
 
+    def test_settings_change_answers_from_its_result(self):
+        """A plain volume/brightness command that worked is answered from the tool's own result (no second pass)."""
+        done = server.tools.actions.done_text
+        vol = {"before": {"volume_pct": 50, "muted": False}, "after": {"volume_pct": 100, "muted": False}}
+        self.assertEqual(done("control", {"setting": "volume", "value": "100"}, vol), "Volume is at 100% (was 50%).")
+        same = {"before": {"volume_pct": 70, "muted": False}, "after": {"volume_pct": 70, "muted": False}}
+        self.assertEqual(done("control", {"setting": "volume", "value": "70"}, same), "Volume is at 70%.")
+        self.assertEqual(done("control", {"setting": "brightness", "value": "40"}, {"before": 70, "after": 40}),
+                         "Brightness is at 40%.")
+        self.assertIsNone(done("control", {"setting": "volume", "value": "1"}, {"error": "x"}))
+        self.assertIsNone(done("open", {"target": "chrome"}, {"ok": True}))  # the model answers the rest
+
     def test_name_from_settings_wins_over_a_misheard_one(self):
         """"My name is Friday Gaspi" (the owner's name misheard) gets a note to keep the Settings name, not the
         "save this fact" note; restating the right name and asking "what's my name" get their own notes."""

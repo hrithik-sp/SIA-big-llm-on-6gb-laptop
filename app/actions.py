@@ -502,6 +502,28 @@ def control(setting, value=""):
     return {"error": "setting must be volume, mute, brightness, bluetooth, wifi, theme or media"}
 
 
+def done_text(name, args, result):
+    """The reply for a settings change that worked, from its own result, so a plain command ("increase the volume")
+    needs no second model pass to say so (it took ~4 s). None when the model should answer."""
+    if name != "control" or not isinstance(result, dict) or "error" in result:
+        return None
+    s, after = str((args or {}).get("setting", "")).lower(), result.get("after")
+    if s in ("volume", "mute") and isinstance(after, dict) and "volume_pct" in after:
+        if s == "mute":
+            return "Muted." if after.get("muted") else f"Unmuted. Volume is at {after['volume_pct']}%."
+        before = result.get("before") or {}
+        was = (f" (was {before['volume_pct']}%)" if isinstance(before, dict) and "volume_pct" in before
+               and before["volume_pct"] != after["volume_pct"] else "")
+        return f"Volume is at {after['volume_pct']}%{was}."
+    if s == "brightness" and after is not None:
+        return f"Brightness is at {after}%."
+    if s in ("bluetooth", "wifi") and after:
+        return f"{'Bluetooth' if s == 'bluetooth' else 'Wi-Fi'} is {str(after).lower()}."
+    if s == "theme":
+        return f"Switched to the {str((args or {}).get('value', '')).lower()} theme."
+    return None
+
+
 def power_(mode):
     return lock_screen() if str(mode).lower() == "lock" else power(mode)
 

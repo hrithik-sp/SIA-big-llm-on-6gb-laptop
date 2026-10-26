@@ -14,6 +14,8 @@
   doesn't know still get "I don't know".
 - **"Pause listening"** (or "stop listening", "mute the mic") works like the pause button.
 - **Hears your name:** the name in Settings is recognised when you say it ("Rithic SP" is written "Hrithik S P").
+- **Faster commands:** "turn the volume up" is answered straight from the result ("Volume is at 100%"), about twice
+  as fast.
 - **Days until a date** are worked out exactly ("60 days until Christmas"), also in voice mode.
 - **Stays quick after you switch windows:** showing Sia again no longer reloads its starting state over your
   conversation.
