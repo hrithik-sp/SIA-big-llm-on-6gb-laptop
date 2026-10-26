@@ -1829,8 +1829,20 @@ Goal: Sprout separate from Edge, quick and smooth.
     - **Date gaps counted by heart.** Spoken replies don't think, and "How many days are left until Christmas?" came
       out 214 and 66 (it was 60). Questions like "how many days/hours until …" and "how long until/ago …" now must use
       a tool, with a note to work dates out in Python: 5/5 right, plus Diwali (13 days) and hours to midnight.
-    - Unit tests 95 (new: the window-show guard, the follow-up window closing, date spans); the window test fails on
-      the old listener code.
+    - **The owner's own name wasn't heard.** "Hrithik S P" came out as "Rithic SP", "Rhetic", "Riddick",
+      "terrific": on 60 synthetic sentences (6 voices, including Kokoro's two Hindi voices; "Hrithik" said with th and
+      "Ritik" with t) it was written right **0/60** times. Hotwords with the right spelling changed nothing (0/60): the
+      h is silent, so the recogniser never takes that path. What works: the name from Settings goes into the hotwords
+      spelled as it sounds ("Rithik", "Rithik S P"), and every transcript is corrected by sound: a word with the
+      first name's consonant skeleton (r-t-k: Rithic, Rhetic, Reddick, Ritik) becomes the name, and "SP" or "S.P."
+      after it becomes "S P". Only for first names with 3+ sounding consonants (shorter ones catch other words).
+      Result: **56/60** with either recogniser, and 0/72 sentences without the name changed (rhythm, critique, critic,
+      ticket, tricky, recheck, terrific, ridge, "Hey Sia, what time is it?"). Letting g count as k caught "Rittig" but
+      turned "the ridge" into the name, so it was dropped. "Riddick" (the film character) does become the name. The
+      wake phrase is unchanged (45/48 caught, 1/66 false alarms). These are synthetic voices; the owner's own voice
+      may differ.
+    - Unit tests 96 (new: the window-show guard, the follow-up window closing, date spans, the owner's name by sound);
+      the window test fails on the old listener code.
 
 ## Optimization candidates (each must be measured before it counts)
 

@@ -9,6 +9,7 @@
 - **Understands misheard names:** "Arya Bata" is answered as Aryabhata ("I assume you mean ..."), while people it
   doesn't know still get "I don't know".
 - **"Pause listening"** (or "stop listening", "mute the mic") works like the pause button.
+- **Hears your name:** the name in Settings is recognised when you say it ("Rithic SP" is written "Hrithik S P").
 - **Days until a date** are worked out exactly ("60 days until Christmas"), also in voice mode.
 - **Stays quick after you switch windows:** showing Sia again no longer reloads its starting state over your
   conversation.

@@ -221,21 +221,32 @@ def stt_path(kind="fast"):
     return PARAKEET_ACCURATE if kind == "accurate" and (PARAKEET_ACCURATE / "tokens.txt").exists() else PARAKEET
 
 
-def load(voice=DEFAULT_VOICE, stt="fast"):
-    """Load the recogniser and the voice (once; a few seconds)."""
+def load(voice=DEFAULT_VOICE, stt="fast", owner=""):
+    """Load the recogniser and the voice (once; a few seconds). owner: the name in Settings, which the recogniser is
+    nudged towards and transcripts are corrected to (fix_names)."""
     import sherpa_onnx
     load_tts(voice)
     path = stt_path(stt)
     with _lock:
-        if _M["stt"] is None or _M.get("stt_path") != path:
+        OWNER["name"] = owner or ""
+        if _M["stt"] is None or _M.get("stt_path") != (path, OWNER["name"]):
             _M["stt"] = sherpa_onnx.OfflineRecognizer.from_transducer(
                 encoder=str(path / "encoder.int8.onnx"), decoder=str(path / "decoder.int8.onnx"),
                 joiner=str(path / "joiner.int8.onnx"), tokens=str(path / "tokens.txt"),
-                num_threads=4, model_type="nemo_transducer", **_hotword_args(path))
-            _M["stt_path"] = path
+                num_threads=4, model_type="nemo_transducer", **_hotword_args(path, OWNER["name"]))
+            _M["stt_path"] = (path, OWNER["name"])
 
 
-def _hotword_args(model=PARAKEET):
+OWNER = {"name": ""}
+
+
+def _said_as(word):
+    """A name spelled the way it sounds, for the hotwords: a silent h before a consonant goes (Hrithik -> Rithik)."""
+    said = re.sub(r"^[Hh](?=[^aeiouAEIOU])", "", word)
+    return said[:1].upper() + said[1:] if word[:1].isupper() else said
+
+
+def _hotword_args(model=PARAKEET, owner=""):
     """Contextual biasing (sherpa-onnx hotwords: modified beam search plus an Aho-Corasick graph of the hotwords'
     pieces) so the recogniser writes "Sia" instead of "see ya" / "sir". It needs a BPE vocabulary; Parakeet ships
     only tokens.txt, so one is written from it (piece, then a score that favours earlier, more frequent pieces).
@@ -248,7 +259,18 @@ def _hotword_args(model=PARAKEET):
             vocab.write_text("".join(f"{tok}\t{-float(i)}\n" for tok, i in rows), encoding="utf-8")
     except OSError:
         return {}
-    return dict(decoding_method="modified_beam_search", max_active_paths=4, hotwords_file=str(HOTWORDS),
+    words = HOTWORDS
+    parts = owner.split()
+    if parts:  # the owner's name as it sounds ("Rithik", "Rithik S P"): with fix_names, 57/60 instead of 51/60
+        said = _said_as(parts[0])
+        lines = [said, said.lower(), " ".join([said, *parts[1:]])]
+        try:
+            words = model / "hotwords-owner.txt"
+            words.write_text(HOTWORDS.read_text(encoding="utf-8").rstrip("\n") + "\n" + "\n".join(lines) + "\n",
+                             encoding="utf-8")
+        except OSError:
+            words = HOTWORDS
+    return dict(decoding_method="modified_beam_search", max_active_paths=4, hotwords_file=str(words),
                 hotwords_score=HOTWORD_SCORE, modeling_unit="bpe", bpe_vocab=str(vocab))
 
 
@@ -268,6 +290,35 @@ def transcribe(samples):
     s.accept_waveform(RATE, samples)
     rec.decode_stream(s)
     return s.result.text.strip()
+
+
+def _sound_key(word):
+    """A word's consonant skeleton, the way it sounds: Hrithik, Rithic, Rhetic, Riddick and Ritik are all "rtk"."""
+    w = re.sub(r"[^a-z]", "", word.lower())
+    w = re.sub(r"^h", "", w)  # a silent first h (Hrithik)
+    for a, b in (("ck", "k"), ("th", "t"), ("dh", "d"), ("ph", "f"), ("q", "k"), ("c", "k"), ("d", "t"), ("z", "s")):
+        w = w.replace(a, b)
+    w = re.sub(r"[aeiouyhw]", "", w)
+    return re.sub(r"(.)\1+", r"\1", w)
+
+
+def fix_names(text, owner):
+    """Write the owner's name the way Settings spells it when the recogniser wrote it by sound: "Tell me about Rithic
+    SP" -> "Tell me about Hrithik S P" (the h is silent, so hotwords with the right spelling never fire: 0/60 heard
+    right on synthetic speech). Only for first names of 3+ sounding consonants; short ones would catch other words."""
+    parts = (owner or "").split()
+    if not parts:
+        return text
+    first, key = parts[0], _sound_key(parts[0])
+    if len(key) < 3:
+        return text
+    out = re.sub(r"[A-Za-z]+", lambda m: first if _sound_key(m.group(0)) == key and len(m.group(0)) <= len(first) + 3
+                 else m.group(0), text)
+    initials = [p for p in parts[1:] if len(p.strip(".")) == 1]
+    if len(initials) == len(parts) - 1 and initials:  # "S P" after the name: "SP", "S.P.", "S. P."
+        letters = r"\.?\s*".join(re.escape(i.strip(".")) for i in initials)
+        out = re.sub(rf"\b{re.escape(first)}\s+{letters}(?=\W|$)", " ".join([first, *initials]), out, flags=re.I)
+    return out
 
 
 # ---- speaking: text as a person would say it
@@ -436,7 +487,7 @@ class Listener:
                         self._flush()
                 continue
             try:
-                text = transcribe(seg)
+                text = fix_names(transcribe(seg), OWNER["name"])
             except Exception as e:  # report, keep listening
                 self.events.put({"type": "error", "error": f"speech recognition failed: {e}"})
                 continue

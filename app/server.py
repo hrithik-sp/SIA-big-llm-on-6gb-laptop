@@ -1405,7 +1405,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if what == "start":
             if not voice.available():
                 return self._json({"error": "The voice models aren't installed (see docs/SIA.md, Voice)."}, 404)
-            voice.load(load_settings()["voice_name"], load_settings().get("voice_stt", "fast"))
+            voice.load(load_settings()["voice_name"], load_settings().get("voice_stt", "fast"),
+                           load_settings().get("user_name", ""))
             old, STATE["listener"] = STATE.get("listener"), voice.Listener(load_settings()["voice_listen"])
             if old:
                 old.close()

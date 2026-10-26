@@ -677,6 +677,20 @@ class Voice(unittest.TestCase):
         self.assertTrue(in_window and spotted)  # the window from its start, the wake phrase from any part
         self.assertIsNone(L.hold_until)
 
+    def test_owner_name_heard_by_sound(self):
+        """The recogniser writes the owner's name by sound ("Rithic SP"); it is put back as Settings spells it,
+        and words that only look alike stay."""
+        fix = server.voice.fix_names
+        for heard, want in (("Tell me about Rythic SP.", "Tell me about Hrithik S P."), ("Who is Rhetic?", "Who is Hrithik?"),
+                            ("Hey Sia, who is Rithic S.P.", "Hey Sia, who is Hrithik S P."),
+                            ("This is Rhettic Speaking.", "This is Hrithik Speaking.")):
+            self.assertEqual(fix(heard, "Hrithik S P"), want)
+        for same in ("The rhythm is nice.", "Write a critique.", "He is a critic.", "I need a ticket.", "Is it tricky?",
+                     "Recheck the list.", "It's terrific.", "The ridge is high.", "Read it to me."):
+            self.assertEqual(fix(same, "Hrithik S P"), same)
+        self.assertEqual(fix("who is rave", "Ravi"), "who is rave")  # short names: too many look-alikes, left alone
+        self.assertEqual(server.voice._said_as("Hrithik"), "Rithik")  # the hotword as it sounds (silent h)
+
     def test_follow_up_window_closes_once_a_request_is_taken(self):
         """A request heard in the window closes it (the page reopens it after the answer), so people talking during
         the reply aren't taken as addressed; "Hey Sia." alone opens it for the request."""

@@ -571,6 +571,7 @@ Full commands: lab notebook, "Recommended settings".
 | 62 | People talking nearby got answers, one after another | Anything in the follow-up window counted as a request | Such lines may get "[no reply]" and are dropped silently: background 12/14 silent, real follow-ups 12/12 answered | 69 |
 | 63 | "Pause listening" ran tools | The model got the command | The page handles it like the pause button | 69 |
 | 64 | "Days until Christmas" said 214 | Spoken replies counted dates by heart | Date gaps go through Python: 5/5 | 69 |
+| 65 | The owner's name heard as "Rithic SP", "Rhetic", "Riddick" | The h is silent, so the right spelling never comes out | The name goes into the hotwords as it sounds, and transcripts are corrected by sound: 0/60 → 56/60, no other words changed | 69 |
 
 ---
 
