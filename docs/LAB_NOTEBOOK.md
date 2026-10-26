@@ -1690,7 +1690,7 @@ Goal: Sprout separate from Edge, quick and smooth.
       author, hexgrad; it tags parts of speech with spaCy, so "live" as an adjective is /laɪv/) got **29/32**. Sia now
       speaks through misaki and the same Kokoro ONNX model via onnxruntime (real-time factor 0.28 on 4 threads; the old
       path stays as a fallback). Names are fixed in misaki's dictionary: "Sia" /siə/, "Hrithik" /ɹɪθɪk/. spaCy's
-      dependencies released 2026-10-24 (preshed, murmurhash, cymem) crashed it on Windows, so older versions are pinned.
+      newest dependency releases (preshed, murmurhash, cymem) crashed it on Windows, so older versions are pinned.
     - **"Hey Sia".** A short name is a weak wake word: the keyword spotter caught only **10/30** spoken "Hey Sia"s
       (six voices), and with 25 spellings ("see ah", "sea", "cia") it caught 19/30 but fired on "Hey, see you
       tomorrow" and "Hey, see a doctor soon" (**16/66** false alarms). The recogniser alone wrote "Hey Sier", "Hey

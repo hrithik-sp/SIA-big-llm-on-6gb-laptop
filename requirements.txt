@@ -14,7 +14,7 @@ sherpa-onnx==1.13.8   # Sia's voice mode: Silero VAD, Parakeet speech recognitio
 misaki==0.9.4
 spacy==3.8.7
 thinc==8.3.11
-preshed==3.0.13      # the 2026-10-24 releases of preshed, murmurhash and cymem broke spaCy on Windows (OverflowError)
+preshed==3.0.13      # newer releases of preshed, murmurhash and cymem broke spaCy on Windows (OverflowError)
 murmurhash==1.0.15
 cymem==2.0.13
 num2words==0.5.14
