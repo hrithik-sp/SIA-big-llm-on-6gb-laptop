@@ -452,15 +452,10 @@ async function stream() {
   };
   v.d.classList.add("live"); document.body.classList.add("working");
   am.tools = [];
-  // heard in the follow-up window without "Hey Sia": Sia may answer NO_REPLY (people talking nearby), and then
-  // the exchange is dropped without a word; until the text can't be NO_REPLY any more, it isn't shown or spoken
-  const followup = !!S.followupNext; S.followupNext = false;
-  const maybeSilent = () => followup && NO_REPLY.startsWith(am.answer.trim());
-  let fed = 0;
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" }, signal: S.abort.signal,
-      body: JSON.stringify({ mode: S.mode, model: S.model, think: $("#think").checked, messages: buildApiMessages(), library: "library", voice: V.on, followup }),
+      body: JSON.stringify({ mode: S.mode, model: S.model, think: $("#think").checked, messages: buildApiMessages(), library: "library", voice: V.on }),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
     const reader = r.body.getReader(), dec = new TextDecoder();
@@ -485,9 +480,7 @@ async function stream() {
         if (tFirst == null && (delta.content || delta.reasoning_content)) { tFirst = performance.now(); wait.remove(); }
         if (delta.content && V.on && V.tText == null) V.tText = performance.now();  // for the text-to-voice gap
         if (delta.reasoning_content) am.reasoning += delta.reasoning_content;
-        if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; }
-        if (maybeSilent()) continue;
-        if (am.answer.length > fed) { voiceFeed(am.answer.slice(fed)); fed = am.answer.length; }
+        if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; voiceFeed(delta.content); }
         paint();
       }
     }
@@ -500,14 +493,6 @@ async function stream() {
     S.streaming = false; $("#send").hidden = false; $("#stop").hidden = true; busy(false);
     if (am.error) { V.pending = ""; } else voiceFlush();
     if (V.on && !V.playing && !V.say.length) voiceState("idle");
-  }
-  if (followup && !am.error && am.answer.trim() === NO_REPLY) {  // not said to Sia: drop it, say nothing
-    vlog("dropped: Sia judged it not meant for it", S.chat.messages.length ? S.chat.messages[S.chat.messages.length - 1].content : "");
-    const u = v.d.previousElementSibling;
-    v.d.remove(); if (u && u.classList.contains("user")) u.remove();
-    if (S.chat.messages.length && S.chat.messages[S.chat.messages.length - 1].role === "user") S.chat.messages.pop();
-    if (!S.chat.messages.length) { S.chat = null; showHome(true); }
-    pollStatus(); return;
   }
   if (am.reasoning) am.think_s = ((tThinkEnd || performance.now()) - (tFirst || t0)) / 1000;
   const parts = [modelName(model)];
@@ -699,9 +684,8 @@ function onVoiceEvent(ev) {
       V.ackTimer = setTimeout(sayAck, 400);
       return;
     }
-    const followup = V.listen === "wake" && !ev.wake && !ev.after_wake;
-    vlog(followup ? "asked (follow-up)" : "asked", text);
-    askByVoice(text.charAt(0).toUpperCase() + text.slice(1), followup);
+    vlog(ev.wake || ev.after_wake ? "asked" : "asked (follow-up)", text);
+    askByVoice(text.charAt(0).toUpperCase() + text.slice(1));
   } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
 }
@@ -761,14 +745,12 @@ function bargeIn() {
   if (V.paused) { V.paused = false; if (V.out) V.out.resume().catch(() => {}); }
   if (S.streaming) stop();
 }
-async function askByVoice(text, followup = false) {
+async function askByVoice(text) {
   for (let i = 0; i < 40 && S.streaming; i++) await new Promise((r) => setTimeout(r, 50));  // let a stopped reply finish
   if (S.streaming) return;
   $("#input").value = text; autosize();
-  S.followupNext = followup;
   send();
 }
-const NO_REPLY = "[no reply]";  // the server's word for "that wasn't said to me" (server.NO_REPLY)
 // speaking: complete sentences go out as soon as they're written; the next is fetched while one plays
 // The first piece of a reply is cut short (at a comma or after ~8 words) so its audio is ready quickly; the rest
 // goes sentence by sentence, made while earlier pieces play (a run-on is cut at 7 words). A long first sentence once made the voice

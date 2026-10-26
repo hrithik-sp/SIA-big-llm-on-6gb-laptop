@@ -369,7 +369,8 @@ def fix_names(text, owner):
                 said = "".join(toks[s] for s in span)
                 k = _sound_key(said, g=True)
                 dropped_r = said[:1] in "Hh" and k == whole[1:]  # "Hitakaspy": the r lost after the h
-                if k == whole or dropped_r or (n == 1 and k.startswith(whole) and len(k) <= len(whole) + 2):
+                breathy = said[:1] in "Ff" and k == "f" + whole  # the h heard as f: "Frithicaspie", "Friday Gaspi"
+                if k == whole or dropped_r or breathy or (n == 1 and k.startswith(whole) and len(k) <= len(whole) + 2):
                     hit = n
                     break
         if hit:

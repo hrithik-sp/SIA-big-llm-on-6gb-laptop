@@ -568,10 +568,13 @@ Full commands: lab notebook, "Recommended settings".
 | 59 | The voice started ~5 s after the text in a room with people talking | Nearby speech paused the reply before its first word, and the follow-up window stayed open during the reply | Nothing pauses a reply before it plays; the window closes once a request is taken: 1.1–1.9 s | 69 |
 | 60 | Replies slowed after the window was shown again | The saved warm-up was restored over the conversation each time | Restored only after a fresh start or a wake | 69 |
 | 61 | "Who is Arya Bata?": "no information" | The recogniser spells names by sound | Spoken replies are told so: misheard famous names 7/7, unknown people still "I don't know" | 69 |
-| 62 | People talking nearby got answers, one after another | Anything in the follow-up window counted as a request | Such lines may get "[no reply]" and are dropped silently: background 12/14 silent, real follow-ups 12/12 answered | 69 |
+| 62 | People talking nearby got answers, one after another | Anything in the follow-up window counted as a request | The window closes while Sia answers. (A "[no reply]" filter for such lines was tried and removed: on the owner's own voice it dropped his real requests.) | 69 |
 | 63 | "Pause listening" ran tools | The model got the command | The page handles it like the pause button | 69 |
 | 64 | "Days until Christmas" said 214 | Spoken replies counted dates by heart | Date gaps go through Python: 5/5 | 69 |
 | 65 | The owner's name heard as "Rithic SP", "Rhetic", "Riddick" | The h is silent, so the right spelling never comes out | The name goes into the hotwords as it sounds, and transcripts are corrected by sound: 0/60 → 56/60, no other words changed | 69 |
+| 66 | On the owner's voice the name and initials ran together ("Rithikaspi", "Friday Gaspi") | The recogniser joins or splits unfamiliar words | The correction matches the whole name too: his recordings 10/17 → 17/17 | 69 |
+| 67 | "Yes?" came late and over the request; requests after it vanished | "Yes?" was made on demand; the follow-up filter dropped real lines | "Yes?" is ready at once and yields to speech; the filter was removed | 69 |
+| 68 | "My name is Friday Gaspi" (misheard): "I've updated your name" | The model takes a stated name at face value | A note beside the message keeps the Settings name: 4/4 | 69 |
 
 ---
 

@@ -287,6 +287,24 @@ class SettingsAndTools(unittest.TestCase):
         finally:
             server.CHAT.states, server.CHAT.ensure, server.restore_warm, server.CHAT.primed = orig
 
+    def test_name_from_settings_wins_over_a_misheard_one(self):
+        """"My name is Friday Gaspi" (the owner's name misheard) gets a note to keep the Settings name, not the
+        "save this fact" note; restating the right name and asking "what's my name" get their own notes."""
+        orig = server.load_settings
+        try:
+            server.load_settings = lambda: {**server.DEFAULT_SETTINGS, "user_name": "Hrithik S P"}
+            def note(text):
+                body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": text}]})
+                return body["messages"][-1]["content"]
+            n = note("My name is Friday Gaspi.")
+            self.assertIn("almost surely misheard", n)
+            self.assertNotIn("save it with a memory tool", n)
+            self.assertIn("already know from Settings", note("my name is Hrithik S P"))
+            self.assertIn("whatever an earlier message", note("What's my name?"))
+            self.assertNotIn("Settings", note("what's the time?").split("Sia note", 1)[1])
+        finally:
+            server.load_settings = orig
+
     def test_date_spans_are_worked_out_with_a_tool(self):
         """Spoken replies don't think: "how many days until Christmas" by heart came out 214 and 66."""
         for text, forced in (("How many days are left until Christmas?", True), ("How long until Diwali?", True),

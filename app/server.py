@@ -852,6 +852,8 @@ ACK_RX = re.compile(r"^\W*(?:cool|ok(?:ay)?|k|nice|great|thanks?(?: you)?|thx|go
 # a message that may tell Sia a lasting fact about the user ("my laptop is an HP Victus, by the way")
 FACT_RX = re.compile(r"\b(remember|keep in mind|note that|by the way|fyi)\b|\bmy \w+(?: \w+)? (?:is|are)\b|"
                      r"\bI(?: am|'m| like| love| prefer| hate| use| work| study| live)\b", re.I)
+NAME_RX = re.compile(r"\bmy (?:full |real |actual )?name is\s+([^.,!?\n]{1,40})", re.I)  # see name_note
+ASK_NAME_RX = re.compile(r"\b(?:what'?s|what is|tell me|say|do you know) my (?:full )?name\b|\bwho am i\b", re.I)
 
 
 CLAIM_RX = re.compile(r"\b(noted|saved (?:that|it|this)|i'?ll remember|i will remember|keep (?:that|it|this) in "
@@ -901,9 +903,6 @@ def is_bare_math(text):
 # messages about days get the coming dates with their weekdays in the note (tools.now_context)
 DAYS_RX = re.compile(r"\b(today|tonight|tomorrow|yesterday|weekend|(this|next|coming) week|days?|"
                      r"(mon|tues|wednes|thurs|fri|satur|sun)day|plan|schedule|timetable|deadline|exams?|due)\b", re.I)
-
-
-NO_REPLY = "[no reply]"  # a follow-up that wasn't for Sia: the page drops it and says nothing
 
 
 def needs_reasoning(text):
@@ -1087,10 +1086,6 @@ def build_request(req):
                   " The message came through speech recognition, which spells names by sound: if a name sounds like "
                   "a well-known person, place or thing (\"Arya Bata\" = Aryabhata), answer about that one and say "
                   "who you took it to be.") if req.get("voice") else ""
-        # heard in the follow-up window, without "Hey Sia": people talking nearby once got a reply line after line
-        followup = (" This was heard right after your last reply, without \"Hey Sia\", so it may be other people "
-                    "talking nearby or a mishearing. If it doesn't read as something said to you that fits this "
-                    f"conversation, reply with exactly {NO_REPLY} and nothing else.") if req.get("followup") else ""
         calc_note = (" Compute every number in this reply with the calculate tool and quote its result exactly."
                      if is_math(last_text) and not wants_action(last_text) else "")
         if DATE_SPAN_RX.search(last_text):
@@ -1100,9 +1095,25 @@ def build_request(req):
         host = tools.MCP["host"]
         if host and "memory" in host.servers and not mode.get("rag"):
             memory = " " + memory_note()
-            if FACT_RX.search(last_text):
+            if FACT_RX.search(last_text) and not NAME_RX.search(last_text):
                 memory += (" If this message tells you a lasting fact about the user, save it with a memory tool now; "
                            "never just say you'll keep it in mind.")
+        # "my name is ...": the name is set in Settings. In voice "Hrithik S P" was heard as "Friday Gaspi" and Sia
+        # said it had updated the name (a line in the system prompt didn't stop it; next to the message it does)
+        owner, said = settings["user_name"].strip(), NAME_RX.search(last_text)
+        name_note = ""
+        if owner and said:
+            heard = said.group(1).strip(" .!?,'\"")
+            if heard and heard.split()[0].lower() == owner.split()[0].lower():
+                name_note = (f" They restated their name, {owner}, which you already know from Settings: acknowledge it "
+                             "in a few words; don't save it.")
+            elif heard:
+                name_note = (f" They said their name is \"{heard}\", but their name is {owner}, set in Settings: speech "
+                             f"recognition almost surely misheard it. Keep calling them {owner.split()[0]}: say you have "
+                             f"them as {owner} and that the name can be changed in Settings. Don't save a name, and never "
+                             "say you changed or updated it.")
+        elif owner and ASK_NAME_RX.search(last_text):  # after a misheard "my name is ..." it once said "You're Ruth Spee"
+            name_note = f" Their name is {owner}, set in Settings, whatever an earlier message in this chat said."
         # a greeting got "Hey Hrithik. What's on your mind?": no name, no reflex question, said next to the message
         greet = (" A greeting: answer it briefly and naturally, without their name and without a question."
                  if GREETING_RX.match(last_text) else
@@ -1110,7 +1121,7 @@ def build_request(req):
                  + (", and it is not a game move: call no tool (\"ok\" during Wordle once became a made-up guess)."
                     if game else ".") if ACK_RX.match(last_text) else "")
         stamp = (f"[Sia note, not written by the user; never mention it: {tools.now_context(bool(DAYS_RX.search(last_text)))}"
-                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{followup}{greet}{script_note}]")
+                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{name_note}{spoken}{greet}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):
             last["content"] = list(last["content"]) + [{"type": "text", "text": stamp}]

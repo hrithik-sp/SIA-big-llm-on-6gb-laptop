@@ -1843,6 +1843,31 @@ Goal: Sprout separate from Edge, quick and smooth.
       may differ.
     - Unit tests 96 (new: the window-show guard, the follow-up window closing, date spans, the owner's name by sound);
       the window test fails on the old listener code.
+    - **On the owner's own voice (three recorded sessions, 127 lines, with a log of what the page did with each).**
+      - *The name:* the recogniser also ran the name and initials together or split them: "Rithikaspi",
+        "Redigaspy", "Hitakaspy", "Hit the gaspee", "Rithik Spe", and with the h heard as f, "Frithicaspie" and
+        "Friday Gaspi". The sound correction now also matches the whole name (first name plus initials, up to three
+        words, g heard as k only there). Session 1 recordings: name right **17/17** (was 10/17 with the first
+        version), "S P" right 14/14, no false names in the other 23. The accurate recogniser did worse on this voice
+        (8/17, and lines like "Yeah." for whole sentences), so fast stays the default. Synthetic check afterwards:
+        55–57/60, 0/72 false.
+      - *"Yes?" late and over the request:* the owner pauses after "Hey Sia" (11 of 40 lines were a bare "Hey
+        Sia"). "Yes?" was made by the voice on demand (~1 s) and spoken while he was already talking. It is now made
+        once when voice mode starts, waits 0.4 s, and is dropped or cut off as soon as he speaks.
+      - *Requests that vanished:* the "[no reply]" filter above dropped the owner's own lines in session 3 ("Well,
+        I'm the boss, you listen to what I say, right?", "So Russia is Trumps" for "transcontinental", "Hey a tale
+        Hrithik a fun fact" for "Hey Sia, tell Hrithik...") and blocked no real background talk, and a drop also
+        closed the window, so his next lines were ignored. **The filter was removed.** Fewer stray lines reach Sia
+        anyway because the window now closes while it answers (the owner noticed less noise being picked up).
+      - *A request after a bare "Hey Sia"* is marked as such by the listener: it can interrupt like the wake
+        phrase and is never treated as overheard. *"Hey Sia, stop"* heard as "Hey Sop." now stops the reply.
+      - *"My name is Friday Gaspi"* (misheard) got "I've updated your name in my records", with no tool. A line in
+        the system prompt didn't help (2/2 runs still "updated"); a note next to the message does: 4/4 "I have you as
+        Hrithik S P; it can be changed in Settings", and "What's my name?" afterwards 6/6 right. A restated right
+        name is acknowledged and not saved.
+      - Also: one warm-up restore at start (two window shows had restored it twice); days until a date counted as
+        calendar days (New Year: 67, it had said 66); the memory card's empty "This changes your laptop: it ." now
+        says what a save does.
 
 ## Optimization candidates (each must be measured before it counts)
 

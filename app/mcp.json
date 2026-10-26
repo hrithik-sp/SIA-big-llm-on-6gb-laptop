@@ -39,8 +39,10 @@
       "guide": "Memory: everything you remember about the user is in the note at the end of their newest message; answer questions about them from it, all of it, and store facts about the user under their full name (the name itself is known from Settings: never save it on its own). When they tell you a lasting fact about themselves (preferences, people in their life, their devices, projects, routines), save it in the same reply with memory_create_entities (a new person/thing) or memory_add_observations (a new fact about an existing one); the user approves each save. Never say you will remember or keep something in mind unless a memory tool saved it in this reply. Don't save passing remarks, secrets or passwords. To forget something, use Sia's forget tool with what to forget in the user's words; the card shows exactly what will go.",
       "tools": {
         "create_entities": {"policy": "action", "label": "Remember: {entities}",
+                            "does": "saves this in Sia's memory on this laptop; ask Sia to forget it any time",
                             "description": "Remember new people, places, projects or things: entities [{name, entityType, observations: [facts]}]. Use the user's name as the entity for facts about them."},
         "add_observations": {"policy": "action", "label": "Remember: {observations}",
+                             "does": "saves this in Sia's memory on this laptop; ask Sia to forget it any time",
                              "description": "Remember new facts about something already remembered: observations [{entityName, contents: [facts]}]."},
         "delete_observations": {"policy": "off", "label": "Forget: {deletions}",
                                 "description": "Forget specific facts: deletions [{entityName, observations: [exact facts]}]."},

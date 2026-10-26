@@ -4,8 +4,12 @@
 
 - **Speaks as soon as it writes:** people talking nearby no longer hold Sia's first words back (the voice now
   starts 1–2 s after the text instead of ~5 s).
-- **Ignores people talking nearby:** after an answer, a line that wasn't said to Sia gets no reply instead of an
-  answer, and doesn't keep the conversation going.
+- **Talk around it while it answers:** people talking nearby no longer cut into a reply; only "Hey Sia" or "stop"
+  interrupt it, and "Hey Sia, stop" works even when it's heard as "Hey Sop".
+- **"Hey Sia" ... pause ... request:** "Yes?" is ready at once, isn't said over you if you carry on, and what you
+  say next always counts as a request.
+- **Your name is your name:** if Sia mishears you saying your name, it keeps the name from Settings instead of
+  "updating" it.
 - **Understands misheard names:** "Arya Bata" is answered as Aryabhata ("I assume you mean ..."), while people it
   doesn't know still get "I don't know".
 - **"Pause listening"** (or "stop listening", "mute the mic") works like the pause button.
