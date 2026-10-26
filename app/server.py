@@ -708,7 +708,7 @@ def kb_list():
 SETTINGS_FILE = DATA / "settings.json"
 DEFAULT_SETTINGS = {"laptop_access": True, "laptop_actions": True, "always_allow": [], "user_name": "",
                     "voice_name": voice.DEFAULT_VOICE, "pronouns": "", "voice_listen": "wake",
-                    "voice_stt": "fast"}
+                    "voice_stt": "fast", "voice_record": False}
 PRONOUNS = {"he/him": ("he", "his"), "she/her": ("she", "her"), "they/them": ("they", "their")}
 ACTIONS_LOG = DATA / "logs" / "actions.log"
 
@@ -1407,6 +1407,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._json({"error": "The voice models aren't installed (see docs/SIA.md, Voice)."}, 404)
             voice.load(load_settings()["voice_name"], load_settings().get("voice_stt", "fast"),
                            load_settings().get("user_name", ""))
+            # voice_record (off unless set in settings.json): keep what was heard in app-data, to tune recognition
+            voice.RECORD["dir"] = DATA / "voice-samples" if load_settings().get("voice_record") else None
             old, STATE["listener"] = STATE.get("listener"), voice.Listener(load_settings()["voice_listen"])
             if old:
                 old.close()

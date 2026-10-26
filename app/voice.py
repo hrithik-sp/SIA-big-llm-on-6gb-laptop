@@ -238,6 +238,29 @@ def load(voice=DEFAULT_VOICE, stt="fast", owner=""):
 
 
 OWNER = {"name": ""}
+# Settings voice_record (off by default): keep what was heard, to tune recognition on the owner's own voice
+RECORD = {"dir": None, "max": 40}
+
+
+def keep_sample(audio, raw, text):
+    """Save one heard line (16 kHz WAV) and its transcripts (raw, after fix_names) in RECORD["dir"]; up to max."""
+    import json
+    d = RECORD["dir"]
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        n = len(list(d.glob("*.wav")))
+        if n >= RECORD["max"]:
+            return
+        name = f"{n + 1:03d}.wav"
+        with wave.open(str(d / name), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(RATE)
+            w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
+        with open(d / "heard.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps({"file": name, "raw": raw, "text": text}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def _said_as(word):
@@ -487,10 +510,13 @@ class Listener:
                         self._flush()
                 continue
             try:
-                text = fix_names(transcribe(seg), OWNER["name"])
+                raw = transcribe(seg)
+                text = fix_names(raw, OWNER["name"])
             except Exception as e:  # report, keep listening
                 self.events.put({"type": "error", "error": f"speech recognition failed: {e}"})
                 continue
+            if RECORD["dir"]:
+                keep_sample(seg, raw, text)
             if re.search(r"\w", text):
                 woke, request = wake_split(text, spotted) if self.mode == "wake" else (False, text)
                 if woke and not request:
