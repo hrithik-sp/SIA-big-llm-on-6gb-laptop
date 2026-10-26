@@ -3,8 +3,8 @@
   python tools/make_figures.py
 
 Every number below is a measured result; the comment names its lab-notebook finding.
-Colours: the dataviz reference palette (categorical slots 1-3 and the blue/red diverging
-pair), validated for colour-vision deficiency in both modes; every mark is also labelled.
+Colours: three categorical colours and a blue/red diverging pair, checked for colour-vision
+deficiency in both light and dark mode; every mark is also labelled.
 """
 from pathlib import Path
 

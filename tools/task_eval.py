@@ -1,7 +1,8 @@
-"""Task accuracy and answer flips on GSM8K (in-distribution quality check).
+"""Task accuracy and answer flips on GSM8K and MMLU-Pro (in-distribution quality check).
 
-Each model answers the same fixed GSM8K test problems (OpenAI grade-school-math,
-commit 3101c7d, test.jsonl sha256 3730d312...) through llama-server at temperature 0.
+Each model answers the same fixed problems through llama-server at temperature 0: GSM8K
+(Cobbe et al. 2021; OpenAI grade-school-math, commit 3101c7d, test.jsonl sha256 3730d312...)
+or a stratified MMLU-Pro sample (Wang et al., NeurIPS 2024; --bench mmlupro).
 Reports accuracy and, against a reference model, answer "flips" (Dutta et al.,
 "Accuracy is Not All You Need", NeurIPS 2024): problems whose final answer differs.
 

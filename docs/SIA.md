@@ -86,9 +86,8 @@ Instead of a new special-purpose tool for every kind of question, Sia has two ge
 
 ### Voice mode
 
-Tap the microphone button and say **"Hey Sia"**, then your request ("Hey Sia, what time is it?"). Sia answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored; while Sia speaks, "Hey Sia", "stop" or "wait" interrupt it. The pause button stops listening (or say "pause listening"); Settings has "Always listening" for when you're alone. While Sia answers, people talking nearby don't cut in; only "Hey Sia" or "stop" interrupt it. Your name (from Settings) is recognised when you say it.
-It is the same model and personality, answering in a spoken style. Talk over it to interrupt; tap the
-button again to stop.
+Tap the microphone button and say **"Hey Sia"**, then your request ("Hey Sia, what time is it?"). Sia answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored, and while Sia answers they don't cut in: only "Hey Sia" or a stop word ("stop", "wait") interrupts it. The pause button stops listening (or say "pause listening"); Settings has "Always listening" for when you're alone, and in that mode talking over Sia interrupts it. Your name (from Settings) is recognised when you say it.
+It is the same model and personality, answering in a spoken style. Tap the button again to stop.
 
 - **Offline, on the CPU** (sherpa-onnx): Silero VAD notices when you start and stop talking, NVIDIA
   Parakeet 110M turns your speech into text (about 0.1 s), and Kokoro-82M speaks the reply sentence

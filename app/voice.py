@@ -14,8 +14,9 @@ All three parts run on the CPU through sherpa-onnx (k2-fsa, Apache-2.0), measure
 - Kokoro-82M v1.0 (Apache-2.0): text to speech, 24 kHz; 6.3 s of speech in 2.4 s on 4 threads
   (fp32). The int8 export was slower than real time on this CPU, so it isn't used.
 
-The browser captures the microphone with echo cancellation, so the user can interrupt Sia while
-it speaks; it sends 16 kHz audio here and plays back what speak() returns. Models load when voice
+The browser captures the microphone with echo cancellation, so Sia doesn't hear itself and can be
+interrupted while it speaks ("Hey Sia" or a stop word by default; any words in always-listening mode);
+it sends 16 kHz audio here and plays back what speak() returns. Models load when voice
 mode starts and are freed when it stops (~0.7 GB of RAM).
 """
 import io

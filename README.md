@@ -64,9 +64,10 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
    as a 2-bit quantization's do. Because QAT is a re-trained model, not a compressed copy, only
    task accuracy can judge it.
 3. **Speculative decoding depends on the model.** Gemma's own MTP head gives 1.32× at temperature 0
-   (26.4 → 34.9 tok/s) and 1.25× at Google's recommended sampling (25.0 → 31.3 tok/s). gpt-oss's
+   (26.4 → 34.9 tok/s) and 1.25× at Google's recommended sampling (25.1 → 31.3 tok/s). gpt-oss's
    EAGLE-3 draft makes it 22% *slower*, because checking several tokens loads the union of
-   their experts, and many sit in RAM.
+   their experts, and many sit in RAM. Saxena et al. describe exactly this cost for
+   mixture-of-experts models; here it is measured on a laptop.
 4. **Threads follow where the weights live:** 16 threads speed up SSD streaming by 21%, but
    slow RAM-resident gpt-oss by 10%.
 5. **The standard quality metric breaks for chat models.** Gemma 4 instruct has a wikitext
@@ -192,6 +193,22 @@ Every step is measured with the same behaviour and laptop tests before it ships.
 Built on [llama.cpp](https://github.com/ggml-org/llama.cpp), Google's Gemma 4, OpenAI's
 gpt-oss, and GGUF files from ggml-org and unsloth. The models are downloaded separately and
 come under their own licences.
+
+### Research this work builds on
+
+The method and the interpretation of the results rest on published research, credited in full in
+[REPORT.md § References](REPORT.md#references) (BibTeX: [`docs/references.bib`](docs/references.bib)). In particular:
+- **Saxena, Tsai, Taneja, Jaleel and Qureshi**, *Utility-Driven Speculative Decoding for
+  Mixture-of-Experts* (arXiv 2506.20675): speculative decoding can slow MoE models down because the
+  drafted tokens together activate more experts. It explains the gpt-oss result here.
+- **Dutta et al.**, *Accuracy is Not All You Need* (NeurIPS 2024): why fidelity is measured with
+  KL-divergence and answer flips, not accuracy alone.
+- **Svirschevski et al.**, *SpecExec* (NeurIPS 2024): why speculative decoding pays most when weights
+  stream from slower memory.
+- **Williams, Waterman and Patterson**, *Roofline* (CACM 2009): the ceiling every speed is compared with.
+- **Leviathan et al.** (ICML 2023) and **Chen et al.** (2023): speculative decoding itself.
+- **Wang et al.**, *MMLU-Pro* (NeurIPS 2024), and **Cobbe et al.**, *GSM8K* (2021): the accuracy tests.
+- **Liu et al.**, *ATSInfer* (arXiv 2607.10183): the closest prior study of this hardware class.
 
 ## Citation and licence
 

@@ -202,7 +202,7 @@ The project began from a set of initial research notes. Each claim was checked b
 
 | Claim | Status |
 |---|---|
-| "PIPO was tested on a 6 GB RTX 3060 laptop, nearly your hardware" | Not so close. This RTX 3050 measures 162 GB/s; a 3060 Laptop is rated 336 GB/s. |
+| "PIPO was tested on a 6 GB RTX 3060 laptop, nearly your hardware" (Liu, Li and Li, [PIPO](https://arxiv.org/abs/2504.03664), preprint) | Not so close. This RTX 3050 measures 162 GB/s; a 3060 Laptop is rated 336 GB/s. |
 | ~16 GB RAM, much of it in use | Confirmed. RAM, not VRAM, is the binding constraint. |
 | Gemma 4 26B-A4B as the target | **Verified, with a correction.** 25.2B total / 3.8B active, 128 experts (8 + 1 shared). unsloth UD-Q4_K_M is **16.9 GB** (doesn't fit RAM + VRAM). Fits: UD-IQ2_M 10.0, UD-IQ3_XXS 11.4, UD-Q3_K_M 12.7 GB. |
 | `--moe-cache-mib` merged Oct 7 | **Verified:** `d6cf9acb2` (#29887); SLRU since `33d6135cb` (#30637). |
@@ -215,7 +215,7 @@ The project began from a set of initial research notes. Each claim was checked b
 | Finding | Source | Consequence here |
 |---|---|---|
 | MoE expert cache breaks even at ~85% hit rate on PCIe 4.0 x8; incompatible with `--n-cpu-moe` | llama.cpp [#29887](https://github.com/ggml-org/llama.cpp/pull/29887), [#30637](https://github.com/ggml-org/llama.cpp/pull/30637) | Our break-even: (1−h)/13.1 + h/162 = 1/54 → **h ≈ 82%**. Prediction: the cache loses here. Untested (`llama-bench` has no `--moe-cache-mib`). |
-| At small batch, compute experts on the CPU rather than copying weights | [Fiddler, ICLR 2025](https://arxiv.org/pdf/2402.07033) | Supports CPU experts for decode. Prompt batches ≥ 32 go the other way (weights uploaded), so larger `-ub` amortizes PCIe |
+| At small batch, compute experts on the CPU rather than copying weights | Kamahori et al., [Fiddler, ICLR 2025](https://arxiv.org/pdf/2402.07033) | Supports CPU experts for decode. Prompt batches ≥ 32 go the other way (weights uploaded), so larger `-ub` amortizes PCIe |
 | clang ~16% faster than MSVC for CPU prompt processing | llama.cpp [#10314](https://github.com/ggml-org/llama.cpp/pull/10314) (2024) | **Measured: no effect here** (finding 14) |
 | "MSVC build uses +2 GB VRAM" | llama.cpp [#27814](https://github.com/ggml-org/llama.cpp/issues/27814) | **Not credible:** different commits compared; closed "not planned" |
 | MSVC native detection enables base AVX-512 only; MSVC 19.29 lacks AVX512-BF16 intrinsics | `ggml/src/ggml-cpu/cmake/FindSIMD.cmake`; build error C3861 | VNNI/VBMI enabled explicitly; BF16 off (irrelevant for MXFP4/quantized models) |
@@ -813,8 +813,11 @@ of its own session.)
     - **gpt-oss-20b: slower at every draft length** (−22% at n2). Each verification
       step yields ~2 tokens but costs ~2.5× a single-token step (≈ 90 ms vs 36 ms).
       Verifying 3 tokens runs the union of their experts, and many experts sit on
-      the CPU. This is the MoE caveat from Cascade (arXiv 2506.20675), now measured
-      on this laptop.
+      the CPU. This is the MoE caveat of Saxena, Tsai, Taneja, Jaleel and Qureshi,
+      *Utility-Driven Speculative Decoding for Mixture-of-Experts* ([arXiv 2506.20675](https://arxiv.org/abs/2506.20675),
+      preprint, which introduces Cascade): draft tokens together activate more weights, raising
+      verification time 2–3× and causing slowdowns of up to 1.5×. The ~2.5× measured here falls
+      inside their range, now on this laptop.
     - Longer drafts lose for both models: acceptance falls faster than the
       per-step cost amortizes.
     - Gemma's MTP head is trained with the model, so it accepts far more than
@@ -1537,7 +1540,8 @@ Goal: Sprout separate from Edge, quick and smooth.
       but they are separate 7B GPU models: they can't share a 6 GB GPU with the 26B model, and the owner
       wants Sprout's own model. Target: human turn-taking keeps gaps short in every language studied
       (cross-language means differ by at most 250 ms; Stivers et al., PNAS 106(26):10587, 2009), so every
-      stage below was chosen and measured for latency. Gemma 4 26B has no audio input (only E2B/E4B do).
+      stage below was chosen and measured for latency. Gemma 4 26B has no audio input (in the Gemma 4 family,
+      only E2B, E4B and 12B do, per Google's model card).
     - **Parts** (all on the CPU via sherpa-onnx 1.13.8, Apache-2.0; 2.0.0 was too new to pin; model files
       checked against GitHub's SHA-256, recorded in `LLM_HOME/models/voice/SOURCES.json`):
 
@@ -1898,23 +1902,28 @@ Goal: Sprout separate from Edge, quick and smooth.
 | Approach | Source | Output-preserving? | Applies here? |
 |---|---|---|---|
 | Quantization-aware training (model trained for 4-bit) | Google Gemma 4 QAT release ("similar quality to bfloat16"); same idea as gpt-oss MXFP4 | Near-lossless (claimed). Measured here: −4.8 MMLU-Pro points vs Q8_0, p = 0.041 (finding 48) | **Partly:** fast, with a small measured loss. gpt-oss MXFP4 (a native release) has none by definition |
-| Speculative decoding for **offloaded** models: verifying many tokens costs about one token when weights stream | [SpecExec](https://arxiv.org/pdf/2406.02532) (NeurIPS 2024, [code](https://github.com/yandex-research/specexec)): 50B+ at 4–6 tok/s on consumer GPUs with RAM offload | Exact | **Yes, the main lever** for the SSD-streamed Q8_0 |
-| SubSpec: training-free draft from low-bit substitutes of offloaded layers, sharing GPU layers + KV | [arXiv 2509.18344](https://arxiv.org/abs/2509.18344) (NeurIPS 2025, [code](https://github.com/NYCU-EDgeAi/subspec)): 9.1× (7B, 8 GB VRAM), 12.5× avg (32B, 24 GB) | Exact | Concept: well-aligned cheap draft. llama.cpp can't share layers; Gemma's MTP head plays that role |
-| SpecOffload: draft on idle GPU while target weights stream | [arXiv 2505.10259](https://arxiv.org/abs/2505.10259) ([OpenReview](https://openreview.net/forum?id=rVrWNb2XLi)): 2.54× throughput | Exact | Throughput/multi-batch pipeline; concept only for single-user chat |
-| **Caution: SD on MoE** (verifying k tokens loads the union of their experts) | [Utility-Driven SD for MoE (Cascade)](https://arxiv.org/abs/2506.20675): up to 1.5× slowdown; [Limits of Speculation](https://arxiv.org/html/2609.22156); [EVICT](https://arxiv.org/html/2605.00342v1); [Cost-aware SD for MoE](https://arxiv.org/html/2607.12696) | — | Measure, don't assume; sweep draft length |
-| Expert caching + prefetching / hybrid scheduling | [Mixtral-offloading](https://arxiv.org/abs/2312.17238) ([code](https://github.com/dvmazur/mixtral-offloading)); [HybriMoE](https://arxiv.org/abs/2504.05897) (DAC 2025, [code](https://github.com/PKU-SEC-Lab/HybriMoE)): 1.70× decode vs kTransformers | Exact (scheduling) | Built on kTransformers (AMX/Linux). In llama.cpp it would be a substantial new feature; candidate contribution |
-| Lossless BF16 compression (DFloat11) | [arXiv 2504.11651](https://arxiv.org/pdf/2504.11651) (NeurIPS 2025) | Bit-exact | **No:** BF16 → ~11 bits (Gemma 4 ~36 GB) is still far bigger than QAT's 13.45 GiB |
+| Speculative decoding for **offloaded** models: verifying many tokens costs about one token when weights stream | Svirschevski et al., [SpecExec](https://arxiv.org/pdf/2406.02532) (NeurIPS 2024, [code](https://github.com/yandex-research/specexec)): 50B+ at 4–6 tok/s on consumer GPUs with RAM offload | Exact | **Yes, the main lever** for the SSD-streamed Q8_0 |
+| SubSpec: training-free draft from low-bit substitutes of offloaded layers, sharing GPU layers + KV | Wang et al., [arXiv 2509.18344](https://arxiv.org/abs/2509.18344) (NeurIPS 2025, [code](https://github.com/NYCU-EDgeAi/subspec)): 9.1× (7B, 8 GB VRAM), 12.5× avg (32B, 24 GB) | Exact | Concept: well-aligned cheap draft. llama.cpp can't share layers; Gemma's MTP head plays that role |
+| SpecOffload: draft on idle GPU while target weights stream | Zhuge et al., [arXiv 2505.10259](https://arxiv.org/abs/2505.10259) (preprint; [OpenReview](https://openreview.net/forum?id=rVrWNb2XLi)): 2.54× throughput | Exact | Throughput/multi-batch pipeline; concept only for single-user chat |
+| **Caution: SD on MoE** (verifying k tokens loads the union of their experts) | Saxena et al., [Utility-Driven SD for MoE](https://arxiv.org/abs/2506.20675) (Cascade, preprint): verification 2–3× costlier, up to 1.5× slowdown; Amankulov and Mamatin, [The Limits of Speculation](https://arxiv.org/abs/2609.22156); Pan et al., [EVICT](https://arxiv.org/abs/2605.00342); Xie et al., [EcoSpec: cost-aware SD for MoE](https://arxiv.org/abs/2607.12696) (all preprints) | — | Measure, don't assume; sweep draft length |
+| Expert caching + prefetching / hybrid scheduling | Eliseev and Mazur, [Mixtral-offloading](https://arxiv.org/abs/2312.17238) ([code](https://github.com/dvmazur/mixtral-offloading)); Zhong et al., [HybriMoE](https://arxiv.org/abs/2504.05897) (DAC 2025, [code](https://github.com/PKU-SEC-Lab/HybriMoE)): 1.70× decode vs kTransformers | Exact (scheduling) | Built on kTransformers (AMX/Linux). In llama.cpp it would be a substantial new feature; candidate contribution |
+| Lossless BF16 compression (DFloat11) | Zhang et al., [arXiv 2504.11651](https://arxiv.org/pdf/2504.11651) (NeurIPS 2025) | Bit-exact | **No:** BF16 → ~11 bits (Gemma 4 ~36 GB) is still far bigger than QAT's 13.45 GiB |
 
 ## Related research
 
 | Paper | Venue | What it establishes | Relevance here |
 |---|---|---|---|
-| Liu et al., [ATSInfer](https://arxiv.org/abs/2607.10183) | arXiv preprint, Jul 2026 (not peer-reviewed; no code found) | Tests **gpt-oss-20b MXFP4 on an RTX 3060 6 GB laptop** against llama.cpp. Tensor-level placement by latency saved per byte of VRAM; idle PCIe used during decode. Up to 1.88× prefill / 3.29× decode over llama.cpp. Documents a **laptop thermal wall**. | Closest prior work. Their llama.cpp decode for gpt-oss-20b (~35–60 ms/token) brackets ours (44 ms), an independent sanity check. Motivated our thermal controls. Tensor-level placement is a Phase 6 candidate. |
+| Liu, Ye, Li and Li, [ATSInfer](https://arxiv.org/abs/2607.10183) (*Automated Tensor Scheduling for Hybrid CPU-GPU LLM Inference on Consumer Devices*) | arXiv preprint (not peer-reviewed; no code found) | Tests **gpt-oss-20b MXFP4 on an RTX 3060 6 GB laptop** (32 GB RAM, PCIe 4.0 x16) against llama.cpp. Tensor-level placement by latency saved per byte of VRAM; idle PCIe used during decode. On the laptop, up to 1.88× prefill / 3.29× decode over llama.cpp (1.94× prefill on their desktop). Documents a **laptop thermal wall** (Figures 4 and 12). | Closest prior work. Their Figure 12 places llama.cpp's gpt-oss-20b decode at ~35–60 ms/token, which brackets ours (44 ms with tuned placement, 36 ms after the power-mode fix): an independent sanity check. Motivated our thermal controls. Tensor-level placement is a Phase 6 candidate. |
+| Saxena, Tsai, Taneja, Jaleel and Qureshi, [Utility-Driven Speculative Decoding for Mixture-of-Experts](https://arxiv.org/abs/2506.20675) | arXiv preprint, 2025 (not peer-reviewed) | Draft tokens together activate more MoE weights: verification costs 2–3× more and speculation can slow decoding by up to 1.5×. Their Cascade framework enables speculation only when its utility (token gain per verification cost) pays. | Explains why EAGLE-3 makes gpt-oss slower here (finding 35: ~2.5× per verification step). |
+| Svirschevski et al., [SpecExec](https://arxiv.org/abs/2406.02532) | NeurIPS 2024 | With offloaded weights, a batch of hundreds of tokens costs about as much as one, so speculative decoding pays most. | Explains the larger draft gain for the SSD-streamed Q8_0 (finding 37). |
 | Cao et al., [MoE-Lightning](https://arxiv.org/pdf/2411.11217) | ASPLOS 2025 | Hierarchical roofline over GPU memory, CPU memory, CPU compute and PCIe. Larger micro-batches amortize PCIe transfer. | Peer-reviewed basis for the roofline method. Its policies target batch throughput, not batch-1 chat. |
 | Chen et al., [KTransformers](https://dl.acm.org/doi/10.1145/3731569.3764843) | SOSP 2025 | CPU/GPU hybrid MoE. "Expert Deferral" is lossy (≤0.5% accuracy drop). Fast kernels need Intel AMX. | Not usable here (no AMX); weak prefill on consumer CPUs and no MXFP4 support (per ATSInfer). |
 | Kamahori et al., [Fiddler](https://arxiv.org/pdf/2402.07033) | ICLR 2025 | At small batch, compute missing experts on the CPU instead of copying weights. | Agrees with our expert-cache break-even analysis. |
 | Yuan et al., [LLM Inference Unveiled](https://arxiv.org/pdf/2402.16363) | Survey, 2024 | Decode memory-bound, prefill compute-bound (roofline). | Basis of the "% of roofline" metric. |
 | Dutta et al., [Accuracy is Not All You Need](https://proceedings.neurips.cc/paper_files/paper/2024/file/e0e956681b04ac126679e8c7dd706b2e-Paper-Conference.pdf) | NeurIPS 2024 | Compressed models can keep accuracy while ≥5% of answers flip. Use KL-divergence. | Our quality metric. |
+
+The full reference list, with every author and venue, is in [REPORT.md § References](../REPORT.md#references)
+([BibTeX](references.bib)).
 
 **The mmap problem is known upstream:** llama.cpp
 [#18949](https://github.com/ggml-org/llama.cpp/issues/18949) (gpt-oss-20b, Windows +
@@ -1967,18 +1976,18 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/check_sysmem_fallback.py` | Verifies VRAM overcommit fails loudly (no silent spill) |
 | `tools/task_eval.py`, `tools/mmlupro_extend.ps1` | GSM8K / MMLU-Pro accuracy, flips and exact sign test (`--report`, comma list of tags); `--skip-from` extends a sample without redoing answered ids. `mmlupro_extend.ps1`: 70 → 210 questions (the 15-per-subject sample contains the 5-per-subject one, verified) |
 | `tools/ram_hold.py`, `tools/ram_pressure.ps1` | Daily-use RAM-pressure test (plan item 7) |
-| `app/` (Sprout), `tools/sia_e2e.py`, `tests/test_sia.py` | The offline app (see "Sprout") and its end-to-end and unit tests |
+| `app/` (Sia), `tools/sia_e2e.py`, `tests/test_sia.py` | The offline app (see "Sia") and its end-to-end and unit tests |
 | `tools/spec_bench.py`, `tools/spec_prompts.json`, `tools/spec_report.py` | Speculative decoding through `llama-server` (llama-bench has none): fixed varied prompts at temperature 0; per-prompt tok/s, drafted/accepted tokens; losslessness (identical text vs baseline) → `results/spec.jsonl` |
 | `tools/power_mode.py` | Get/set the Windows power mode via `powrprof` and verify it |
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
 | `tools/build_llama.ps1` | CUDA sm_86 + AVX-512 (VNNI/VBMI) build; parallel jobs sized to free RAM |
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
-| `tests/` | 72 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sprout (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
+| `tests/` | 99 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sia (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
 | `tools/sia_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
 | `tools/sia_actions_check.py` | Laptop actions with the real model, verified against the real state and restored; run only with `--visible` and the owner's OK (finding 58) |
 | `tools/sia_daily_check.py` | 33 daily-use requests across Chat, Study, Code and Write, laptop lookups, limits and games (finding 57) |
-| `tools/sia_tools_check.py`, `tools/sia_window_check.py`, `tools/sia_latency_check.py` | Sprout tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
+| `tools/sia_tools_check.py`, `tools/sia_window_check.py`, `tools/sia_latency_check.py` | Sia tool use with real models (findings 45, 55; pass your own questions as arguments); the standalone window (finding 52); multi-turn reply latency and prompt-cache reuse (finding 55) |
 | `tools/hash_models.py` | SHA-256 of every model file, compared with Hugging Face's published hash at the pinned revision → `results/model_files.json` |
 
 Large files live outside OneDrive in `C:\Users\sphri\llm`: `llama.cpp\`
@@ -2034,7 +2043,7 @@ git apply <this repo>\patches\llama-bench-moe-cache-mib.patch       # llama-benc
 git apply <this repo>\patches\llama-perplexity-parse-special.patch  # chat-corpus KLD (finding 30)
 cd <this repo>
 powershell -ExecutionPolicy Bypass -File tools\build_llama.ps1       # CUDA sm_86, AVX-512 VNNI/VBMI, BF16 off
-python -m unittest discover tests                                    # 72 tests
+python -m unittest discover tests                                    # 99 tests
 ```
 
 **3. Models and data.** `fetch_model.ps1` checks every file against the SHA-256 that

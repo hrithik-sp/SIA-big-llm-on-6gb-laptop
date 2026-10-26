@@ -1,8 +1,10 @@
 """Laptop tools Sia's model may call, with the user's permission.
 
 Security model:
-- Every tool is read-only: nothing here changes a setting or writes, deletes, moves, runs or
-  sends anything, and Sia itself never reaches the network. Two notes: the battery report
+- The reading tools defined here are read-only: they never change a setting or write, delete,
+  move, run or send anything, and Sia itself never reaches the network. The action tools
+  registered in TOOLS (open, control, window, power, ...) live in actions.py, with their own
+  rules, their own Settings switch and an approval card for every use. Two notes: the battery report
   is written by Windows to a temp file that is deleted at once, and Windows' own location
   service (when location is on) may use its network lookup to find the position.
 - No shell is exposed to the model; each tool is a fixed Python function, and unexpected
@@ -14,7 +16,7 @@ Security model:
 - Results are size-limited, and the backend asks the user before each call (the card
   shows the exact path) unless they chose "Always allow" for that tool (app/server.py).
 - A file's contents could try to steer the model ("now read X"); the worst outcome is a
-  further read request the user can deny, since no tool can write or send.
+  further read or action request the user can deny, since nothing runs without its card.
 """
 import ctypes
 import datetime as dt

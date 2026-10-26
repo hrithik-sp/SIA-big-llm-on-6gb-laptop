@@ -98,7 +98,7 @@ higher-precision original to lose against.
 ## 5. Measuring intelligence: did anything get lost?
 
 **Benchmark:** a standard test set with known answers.
-- **GSM8K:** grade-school math word problems. Too easy here: every version scored 98%.
+- **GSM8K:** grade-school math word problems. Too easy here: every version scored 98–100%.
 - **MMLU-Pro:** harder multiple-choice questions (10 options) across 14 subjects.
 
 **Ceiling effect:** a test so easy that everyone gets full marks, so it can't rank anyone.
@@ -117,9 +117,10 @@ it is typically choosing among about 3 likely next tokens.
 **In-distribution:** testing on the kind of text a model is meant for (chats), rather
 than something unusual (raw Wikipedia text confused this chat model).
 
-**Statistical significance (p-value):** how likely a difference is to be luck.
-p = 0.34 means a 34% chance of a gap that big by pure chance, so it doesn't count as
-real. Scientists usually want below 5% (p < 0.05).
+**Statistical significance (p-value):** how often luck alone would produce a gap at
+least this big if the two models were really equally good. p = 0.34 means such a gap
+would appear by chance 34% of the time, so it doesn't count as real. Scientists usually
+want below 5% (p < 0.05).
 
 **Sample size / statistical power:** more questions detect smaller differences. 70
 questions only reliably detect gaps of about 10 points; 210 detect about 6. The QAT
@@ -148,7 +149,8 @@ a small add-on trained together with the model.
 **Acceptance rate:** how often the guesses are right.
 
 **The MoE catch:** checking several guessed tokens can need many different experts,
-which can cancel the speed-up. That's why it is measured, not assumed.
+which can cancel the speed-up (shown by Saxena et al., see REPORT.md, References). That's
+why it is measured, not assumed.
 
 ## 7. Context
 

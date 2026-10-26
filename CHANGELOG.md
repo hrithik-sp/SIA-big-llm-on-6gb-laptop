@@ -1,5 +1,17 @@
 # Changelog
 
+## Documentation: references and credits
+
+- **Full references:** REPORT.md now lists the 45 works this project builds on, with every author and the
+  verified venue, preprints marked as such; also as BibTeX (`docs/references.bib`) and in `CITATION.cff`.
+- **Credit where the results lean on prior work:** Saxena et al. (*Utility-Driven Speculative Decoding for
+  Mixture-of-Experts*) are named wherever the gpt-oss speculative-decoding slowdown is discussed; their 2–3×
+  verification cost brackets the 2.5× measured here.
+- **Corrections:** the Google-sampling baseline is 25.1 tok/s (was written 25.0; the 1.25× is unchanged); in the
+  Gemma 4 family the 12B model also takes audio; the ATSInfer comparison now states their laptop's 32 GB of RAM
+  and that the 35–60 ms range is read from their Figure 12; the voice guide no longer contradicts itself about
+  interruptions; glossary fixes (GSM8K 98–100%, the meaning of a p-value).
+
 ## v1.2.1: voice in a busy room
 
 - **Speaks as soon as it writes:** people talking nearby no longer hold Sia's first words back (the voice now

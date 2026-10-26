@@ -2,13 +2,14 @@
 
 Reads only the GGUF header (no weights are loaded), models where llama.cpp places
 every tensor for a given -ngl / --n-cpu-moe / context / KV-cache type, and compares
-that with the VRAM and RAM free at this moment. Also prints a bandwidth roofline:
-the maximum decode tok/s physically possible for that placement, using the
-bandwidths measured by tools/bandwidth.py.
+that with the VRAM and RAM free at this moment. Also prints a bandwidth roofline
+(Williams, Waterman and Patterson, CACM 2009): the maximum decode tok/s physically
+possible for that placement, using the bandwidths measured by tools/bandwidth.py.
 
 Weight sizes are exact (taken from tensor offsets, so any quant type works).
-KV cache is exact for standard attention and an upper bound for sliding-window
-models. The compute buffer is an estimate; once a run succeeds, pass the real
+KV cache is exact for standard attention and for sliding-window models whose GGUF
+stores the per-layer pattern (src/llama-kv-cache-iswa.cpp); without the pattern it
+is an upper bound. The compute buffer is an estimate; once a run succeeds, pass the real
 "CUDA0 compute buffer size" from llama.cpp's log via --compute-mib.
 
 Exit code: 0 = fits, 1 = does not fit, 2 = bad input.

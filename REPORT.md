@@ -47,7 +47,11 @@ I packaged the results as **Sia**, a private, offline desktop AI app.
 - models by Google (Gemma 4, EmbeddingGemma 2) and OpenAI (gpt-oss), with GGUF conversions by
   ggml-org and unsloth;
 - MMLU-Pro (TIGER-Lab) and GSM8K (OpenAI);
-- marked, DOMPurify, KaTeX and highlight.js in the app.
+- marked, DOMPurify, KaTeX and highlight.js in the app;
+- the published research listed under [References](#references), above all Saxena et al. on
+  speculative decoding for mixture-of-experts models, Dutta et al. on measuring compressed models,
+  Svirschevski et al. (SpecExec) on speculative decoding with offloaded weights, and the roofline
+  model of Williams, Waterman and Patterson.
 
 ---
 
@@ -104,7 +108,7 @@ I set these rules at the start and enforced them in code (`tools/bench.py`, `too
    - KL-divergence of next-token predictions against Q8_0;
    - task accuracy with an **exact sign test** on paired answers;
    - flip counts, which are not enough alone, because compressed models can keep accuracy while
-     many answers change (Dutta et al., NeurIPS 2024).
+     many answers change (Dutta et al. [1]).
 5. **Sources.** Every claim cites:
    - llama.cpp source code (verified in the cloned tree);
    - vendor documentation, a peer-reviewed paper, or my own measurement.
@@ -224,8 +228,9 @@ every document, and it changed the plan:
     from the SSD, and making that fast.
 
 A literature search (lab notebook, "Research for the goal") pointed to the main remaining
-lossless lever: **speculative decoding**, which pays most when weights stream. It also pointed to
-its known caveat for MoE models.
+lossless lever: **speculative decoding**, which pays most when weights stream (SpecExec [8]). It
+also pointed to its known caveat for MoE models: the drafted tokens together activate more experts,
+so checking them costs more (Saxena et al. [7]).
 
 ### Step 5: speed without changing the answer
 
@@ -433,10 +438,11 @@ Before publishing I re-audited everything:
   plugged in, adds another 16% on top: the larger of the two steps.
 - **Against the roofline,** the tuned setup reaches 71–72% of the hard bandwidth ceiling, up from
   57% with the defaults.
-- **Against prior work:** the closest published study is ATSInfer (a preprint), which runs
-  gpt-oss-20b on a 6 GB RTX 3060 laptop and reports 35–60 ms per token for llama.cpp. My tuned
-  36 ms per token (27.7 tok/s) sits at the fast end of that range, on a GPU rated at about half
-  that card's memory bandwidth.
+- **Against prior work:** the closest published study is ATSInfer (Liu et al. [21], a preprint),
+  which runs gpt-oss-20b on a 6 GB RTX 3060 laptop (32 GB RAM, PCIe 4.0 x16). Its Figure 12 places
+  llama.cpp's decode for that model in the 35–60 ms-per-token range. My tuned 36 ms per token
+  (27.7 tok/s) sits at the fast end of that range, on a GPU rated at about half that card's memory
+  bandwidth and with half its RAM.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/speculative-dark.svg">
@@ -449,10 +455,12 @@ Before publishing I re-audited everything:
   - Checking 3 tokens needs the *union* of their experts, and many of gpt-oss's experts sit in
     RAM.
   - One verification step costs 2.5× a normal step but yields only ~2 tokens.
-  - The literature warns this can happen with MoE models (Cascade, preprint); here it is
-    measured.
+  - Saxena et al. [7] showed this for MoE models: draft tokens together activate more weights,
+    which raises verification time 2–3× and can slow generation down by up to 1.5× (their Cascade
+    system turns speculation off when it doesn't pay). The 2.5× measured here falls inside their
+    range, on a laptop where many of the extra experts come from RAM.
 - **Q8_0 streamed from the SSD: 1.25×.** When weights stream, checking extra tokens is nearly
-  free, the effect SpecExec (NeurIPS 2024) describes.
+  free, the effect SpecExec [8] describes.
 - **Longer drafts lose** for the RAM-resident models: acceptance falls faster than the cost
   amortizes.
 
@@ -610,7 +618,7 @@ Full commands: lab notebook, "Recommended settings".
   - the `--moe-cache-mib` option for llama-bench (patch and PR text in `patches/`);
   - notes on mmap and fit margins for small GPUs;
   - a report of the ik_llama.cpp divergence.
-- **Expert prefetching and dynamic CPU-GPU scheduling** (HybriMoE, DAC 2025: 1.70× decode) is
+- **Expert prefetching and dynamic CPU-GPU scheduling** (HybriMoE [20], DAC 2025: 1.70× decode) is
   lossless but not in llama.cpp, and would be a substantial contribution.
 
 ## 8. Reproducing
@@ -622,22 +630,95 @@ regenerates every chart.
 
 ## References
 
-- llama.cpp, ggml-org: source at `0a1ef309c`; PRs #29887, #30637 (MoE cache), #25794 (MTP);
-  issue #18949 (mmap on Windows).
-- Google, Gemma 4 model cards and the QAT release; OpenAI, gpt-oss model card.
-- Dutta et al., *Accuracy is Not All You Need*, NeurIPS 2024.
-- Svirschevski et al., *SpecExec*, NeurIPS 2024.
-- *Utility-Driven Speculative Decoding for Mixture-of-Experts* (Cascade), arXiv 2506.20675
-  (preprint).
-- Kamahori et al., *Fiddler*, ICLR 2025.
-- Cao et al., *MoE-Lightning*, ASPLOS 2025.
-- Chen et al., *KTransformers*, SOSP 2025.
-- *HybriMoE*, DAC 2025.
-- Liu et al., *ATSInfer*, arXiv 2607.10183 (preprint): the closest prior work, gpt-oss-20b on a
-  6 GB laptop GPU.
-- Wang et al., *MMLU-Pro* (TIGER-Lab); Cobbe et al., *GSM8K* (OpenAI).
+Numbers in square brackets in this report refer to this list. Author lists and venues were checked
+against arXiv, Crossref, the PMLR proceedings and OpenReview; preprints (not peer-reviewed) are
+marked as such. A BibTeX version is in [`docs/references.bib`](docs/references.bib).
 
-Full links: lab notebook, "Research findings", "Research for the goal" and "Related research".
+**Measurement method**
+
+1. A. Dutta, S. Krishnan, N. Kwatra and R. Ramjee. [*Accuracy is Not All You Need*](https://proceedings.neurips.cc/paper_files/paper/2024/hash/e0e956681b04ac126679e8c7dd706b2e-Abstract-Conference.html). NeurIPS 2024. arXiv:2407.09141.
+2. S. Williams, A. Waterman and D. Patterson. [*Roofline: An Insightful Visual Performance Model for Multicore Architectures*](https://doi.org/10.1145/1498765.1498785). Communications of the ACM 52(4):65–76, 2009.
+3. Z. Yuan et al. [*LLM Inference Unveiled: Survey and Roofline Model Insights*](https://arxiv.org/abs/2402.16363). arXiv:2402.16363 (survey), 2024.
+4. Q. McNemar. [*Note on the Sampling Error of the Difference Between Correlated Proportions or Percentages*](https://doi.org/10.1007/BF02295996). Psychometrika 12(2):153–157, 1947.
+
+**Speculative decoding**
+
+5. Y. Leviathan, M. Kalman and Y. Matias. [*Fast Inference from Transformers via Speculative Decoding*](https://proceedings.mlr.press/v202/leviathan23a.html). ICML 2023, PMLR 202. arXiv:2211.17192.
+6. C. Chen, S. Borgeaud, G. Irving, J.-B. Lespiau, L. Sifre and J. Jumper. [*Accelerating Large Language Model Decoding with Speculative Sampling*](https://arxiv.org/abs/2302.01318). arXiv:2302.01318, 2023.
+7. A. Saxena, P.-A. Tsai, H. Taneja, A. Jaleel and M. Qureshi. [*Utility-Driven Speculative Decoding for Mixture-of-Experts*](https://arxiv.org/abs/2506.20675). arXiv:2506.20675, 2025 (preprint). Introduces Cascade.
+8. R. Svirschevski, A. May, Z. Chen, B. Chen, Z. Jia and M. Ryabinin. [*SpecExec: Massively Parallel Speculative Decoding for Interactive LLM Inference on Consumer Devices*](https://doi.org/10.52202/079017-0522). NeurIPS 2024. arXiv:2406.02532.
+9. Y. Li, F. Wei, C. Zhang and H. Zhang. [*EAGLE-3: Scaling up Inference Acceleration of Large Language Models via Training-Time Test*](https://doi.org/10.52202/085713-4562). NeurIPS 2025. arXiv:2503.01840.
+10. F. Gloeckle, B. Youbi Idrissi, B. Rozière, D. Lopez-Paz and G. Synnaeve. [*Better & Faster Large Language Models via Multi-token Prediction*](https://proceedings.mlr.press/v235/gloeckle24a.html). ICML 2024, PMLR 235. arXiv:2404.19737.
+11. P.-S. Wang et al. [*Speculate Deep and Accurate: Lossless and Training-Free Acceleration for Offloaded LLMs via Substitute Speculative Decoding*](https://arxiv.org/abs/2509.18344). NeurIPS 2025 (SubSpec). arXiv:2509.18344.
+12. X. Zhuge et al. [*SpecOffload: Unlocking Latent GPU Capacity for LLM Inference on Resource-Constrained Devices*](https://arxiv.org/abs/2505.10259). arXiv:2505.10259, 2025 (preprint).
+13. L. Pan, Z. Tao, X. Wang, Z. Zhao, M. Wang and Y. Zhang. [*Making Every Verified Token Count: Adaptive Verification for MoE Speculative Decoding*](https://arxiv.org/abs/2605.00342). arXiv:2605.00342, 2026 (preprint; EVICT).
+14. J. Xie et al. [*Less Experts, Faster Decoding: Cost-Aware Speculative Decoding for Mixture-of-Experts*](https://arxiv.org/abs/2607.12696). arXiv:2607.12696, 2026 (preprint; EcoSpec).
+15. A. Amankulov and D. Mamatin. [*The Limits of Speculation: Bounding Speculative Decoding in Mixture-of-Experts*](https://arxiv.org/abs/2609.22156). arXiv:2609.22156, 2026 (preprint).
+
+**Mixture-of-experts models and offloading**
+
+16. N. Shazeer et al. [*Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer*](https://openreview.net/forum?id=B1ckMDqlg). ICLR 2017. arXiv:1701.06538.
+17. K. Kamahori, T. Tang, Y. Gu, K. Zhu and B. Kasikci. [*Fiddler: CPU-GPU Orchestration for Fast Inference of Mixture-of-Experts Models*](https://arxiv.org/abs/2402.07033). ICLR 2025. arXiv:2402.07033.
+18. S. Cao et al. [*MoE-Lightning: High-Throughput MoE Inference on Memory-constrained GPUs*](https://doi.org/10.1145/3669940.3707267). ASPLOS 2025. arXiv:2411.11217.
+19. H. Chen et al. [*KTransformers: Unleashing the Full Potential of CPU/GPU Hybrid Inference for MoE Models*](https://doi.org/10.1145/3731569.3764843). SOSP 2025.
+20. S. Zhong, Y. Sun, L. Liang, R. Wang, R. Huang and M. Li. [*HybriMoE: Hybrid CPU-GPU Scheduling and Cache Management for Efficient MoE Inference*](https://doi.org/10.1109/DAC63849.2025.11133274). DAC 2025. arXiv:2504.05897.
+21. Y. Liu, H. Ye, M. Li and W.-J. Li. [*Automated Tensor Scheduling for Hybrid CPU-GPU LLM Inference on Consumer Devices*](https://arxiv.org/abs/2607.10183). arXiv:2607.10183, 2026 (preprint; ATSInfer).
+22. Y. Liu, J. Li and W.-J. Li. [*PIPO: Pipelined Offloading for Efficient Inference on Consumer Devices*](https://arxiv.org/abs/2504.03664). arXiv:2504.03664, 2025 (preprint).
+23. A. Eliseev and D. Mazur. [*Fast Inference of Mixture-of-Experts Language Models with Offloading*](https://arxiv.org/abs/2312.17238). arXiv:2312.17238, 2023 (technical report).
+
+**Compression and number formats**
+
+24. B. Jacob et al. [*Quantization and Training of Neural Networks for Efficient Integer-Arithmetic-Only Inference*](https://doi.org/10.1109/CVPR.2018.00286). CVPR 2018. arXiv:1712.05877.
+25. B. Darvish Rouhani et al. [*Microscaling Data Formats for Deep Learning*](https://arxiv.org/abs/2310.10537). arXiv:2310.10537, 2023.
+26. T. Zhang et al. [*70% Size, 100% Accuracy: Lossless LLM Compression for Efficient GPU Inference via Dynamic-Length Float (DFloat11)*](https://arxiv.org/abs/2504.11651). NeurIPS 2025. arXiv:2504.11651.
+
+**Models**
+
+27. Gemma Team, Google DeepMind. [*Gemma 4 Technical Report*](https://arxiv.org/abs/2607.02770). arXiv:2607.02770, 2026.
+28. OpenAI. [*gpt-oss-120b & gpt-oss-20b Model Card*](https://arxiv.org/abs/2508.10925). arXiv:2508.10925, 2025.
+29. H. Schechter Vera et al. [*EmbeddingGemma: Powerful and Lightweight Text Representations*](https://arxiv.org/abs/2509.20354). arXiv:2509.20354, 2025 (the first EmbeddingGemma; Sia uses EmbeddingGemma 2, described in its model card).
+
+**Benchmarks and test data**
+
+30. Y. Wang et al. [*MMLU-Pro: A More Robust and Challenging Multi-Task Language Understanding Benchmark*](https://arxiv.org/abs/2406.01574). NeurIPS 2024 Datasets and Benchmarks Track. arXiv:2406.01574.
+31. K. Cobbe et al. [*Training Verifiers to Solve Math Word Problems*](https://arxiv.org/abs/2110.14168). arXiv:2110.14168, 2021 (GSM8K).
+32. S. Merity, C. Xiong, J. Bradbury and R. Socher. [*Pointer Sentinel Mixture Models*](https://arxiv.org/abs/1609.07843). ICLR 2017 (WikiText). arXiv:1609.07843.
+33. J. Zhou et al. [*Instruction-Following Evaluation for Large Language Models*](https://arxiv.org/abs/2311.07911). arXiv:2311.07911, 2023 (IFEval).
+34. Y. Chen, X. Yue, C. Zhang, X. Gao, R. T. Tan and H. Li. [*VoiceBench: Benchmarking LLM-Based Voice Assistants*](https://arxiv.org/abs/2410.17196). arXiv:2410.17196, 2024.
+35. E. Debenedetti, J. Zhang, M. Balunović, L. Beurer-Kellner, M. Fischer and F. Tramèr. [*AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents*](https://openreview.net/forum?id=m1YYAQjO3w). NeurIPS 2024 Datasets and Benchmarks Track. arXiv:2406.13352.
+36. S. G. Patil et al. [*The Berkeley Function Calling Leaderboard (BFCL): From Tool Use to Agentic Evaluation of Large Language Models*](https://proceedings.mlr.press/v267/patil25a.html). ICML 2025, PMLR 267.
+
+**Voice pipeline**
+
+37. H. Xu, F. Jia, S. Majumdar, H. Huang, S. Watanabe and B. Ginsburg. [*Efficient Sequence Transduction by Jointly Predicting Tokens and Durations*](https://proceedings.mlr.press/v202/xu23g.html). ICML 2023, PMLR 202 (Parakeet's TDT decoder). arXiv:2304.06795.
+38. D. Rekesh et al. [*Fast Conformer with Linearly Scalable Attention for Efficient Speech Recognition*](https://arxiv.org/abs/2305.05084). ASRU 2023 (Parakeet's encoder). arXiv:2305.05084.
+39. Y. A. Li, C. Han, V. S. Raghavan, G. Mischler and N. Mesgarani. [*StyleTTS 2: Towards Human-Level Text-to-Speech through Style Diffusion and Adversarial Training with Large Speech Language Models*](https://arxiv.org/abs/2306.07691). NeurIPS 2023 (the architecture behind Kokoro-82M). arXiv:2306.07691.
+40. T. Kaneko, K. Tanaka, H. Kameoka and S. Seki. [*iSTFTNet: Fast and Lightweight Mel-Spectrogram Vocoder Incorporating Inverse Short-Time Fourier Transform*](https://arxiv.org/abs/2203.02395). ICASSP 2022 (Kokoro's vocoder). arXiv:2203.02395.
+41. A. Radford, J. W. Kim, T. Xu, G. Brockman, C. McLeavey and I. Sutskever. [*Robust Speech Recognition via Large-Scale Weak Supervision*](https://proceedings.mlr.press/v202/radford23a.html). ICML 2023, PMLR 202 (Whisper; Smart Turn's encoder and features). arXiv:2212.04356.
+42. Z. Yao et al. [*Zipformer: A faster and better encoder for automatic speech recognition*](https://arxiv.org/abs/2310.11230). ICLR 2024 (the wake-phrase spotter's model). arXiv:2310.11230.
+43. G. Chen et al. [*GigaSpeech: An Evolving, Multi-Domain ASR Corpus with 10,000 Hours of Transcribed Audio*](https://doi.org/10.21437/Interspeech.2021-1965). Interspeech 2021 (the spotter's training data).
+44. A. Défossez et al. [*Moshi: a speech-text foundation model for real-time dialogue*](https://arxiv.org/abs/2410.00037). arXiv:2410.00037, 2024.
+45. T. Stivers et al. [*Universals and Cultural Variation in Turn-Taking in Conversation*](https://doi.org/10.1073/pnas.0903616106). PNAS 106(26):10587–10592, 2009.
+
+**Software, models and data this work uses** (each under its own licence; see [NOTICE](NOTICE))
+
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) by Georgi Gerganov and the ggml authors, at commit
+  `0a1ef309c`; pull requests #29887 and #30637 (MoE expert cache), #25794 (MTP), #10314 (clang build);
+  issue #18949 (mmap on Windows). [ik_llama.cpp](https://github.com/ikawrakow/ik_llama.cpp) by Iwan Kawrakow,
+  at `15e7ecac`.
+- Model files: Google's Gemma 4 26B-A4B QAT Q4_0 GGUF and vision projector; unsloth's Gemma 4 GGUF conversions
+  and MTP heads; ggml-org's gpt-oss-20b GGUF and its EAGLE-3 draft; ggml-org's EmbeddingGemma 2 GGUF. Exact
+  repositories, revisions and SHA-256 hashes: lab notebook, "Files used".
+- Model cards quoted: Google's Gemma 4 cards (the QAT claim of "similar quality to bfloat16" and MMLU-Pro 82.6)
+  and Qwen's Qwen3.5-9B card (third-party scores for gpt-oss-20b).
+- Data: TIGER-Lab/MMLU-Pro (revision `b189ec7`), OpenAI grade-school-math (commit `3101c7d`), WikiText-2,
+  Google's IFEval inputs and checker (google-research, `instruction_following_eval`), VoiceBench sd-qa,
+  Pipecat's smart-turn-data-v3.2-test, and GeoNames place names.
+- Sia: sherpa-onnx (k2-fsa), Silero VAD, NVIDIA Parakeet TDT 110M and 0.6B v3, Kokoro-82M and misaki (hexgrad),
+  spaCy, Smart Turn v3.2 (Pipecat), Pydantic Monty, the Model Context Protocol and its reference memory server,
+  pywebview, marked, DOMPurify, KaTeX and highlight.js.
+
+Further links for every source: lab notebook, "Research findings", "Research for the goal" and "Related research".
 
 ---
 

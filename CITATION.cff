@@ -23,3 +23,269 @@ keywords:
   - local LLM
   - Gemma 4
   - gpt-oss
+references:
+  - type: software
+    title: llama.cpp
+    authors:
+      - name: "Georgi Gerganov and the ggml authors"
+    repository-code: "https://github.com/ggml-org/llama.cpp"
+    commit: "0a1ef309c"
+    license: MIT
+  - type: article
+    title: "Utility-Driven Speculative Decoding for Mixture-of-Experts"
+    authors:
+      - family-names: "Saxena"
+        given-names: "Anish"
+      - family-names: "Tsai"
+        given-names: "Po-An"
+      - family-names: "Taneja"
+        given-names: "Hritvik"
+      - family-names: "Jaleel"
+        given-names: "Aamer"
+      - family-names: "Qureshi"
+        given-names: "Moinuddin"
+    year: 2025
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2506.20675"
+    identifiers:
+      - type: other
+        value: "arXiv:2506.20675"
+        description: arXiv identifier
+  - type: conference-paper
+    title: "Accuracy is Not All You Need"
+    authors:
+      - family-names: "Dutta"
+        given-names: "Abhinav"
+      - family-names: "Krishnan"
+        given-names: "Sanjeev"
+      - family-names: "Kwatra"
+        given-names: "Nipun"
+      - family-names: "Ramjee"
+        given-names: "Ramachandran"
+    year: 2024
+    conference:
+      name: "Advances in Neural Information Processing Systems 37 (NeurIPS 2024)"
+    url: "https://proceedings.neurips.cc/paper_files/paper/2024/hash/e0e956681b04ac126679e8c7dd706b2e-Abstract-Conference.html"
+    identifiers:
+      - type: other
+        value: "arXiv:2407.09141"
+        description: arXiv identifier
+  - type: conference-paper
+    title: "SpecExec: Massively Parallel Speculative Decoding for Interactive LLM Inference on Consumer Devices"
+    authors:
+      - family-names: "Svirschevski"
+        given-names: "Ruslan"
+      - family-names: "May"
+        given-names: "Avner"
+      - family-names: "Chen"
+        given-names: "Zhuoming"
+      - family-names: "Chen"
+        given-names: "Beidi"
+      - family-names: "Jia"
+        given-names: "Zhihao"
+      - family-names: "Ryabinin"
+        given-names: "Max"
+    year: 2024
+    conference:
+      name: "Advances in Neural Information Processing Systems 37 (NeurIPS 2024)"
+    doi: "10.52202/079017-0522"
+    url: "https://doi.org/10.52202/079017-0522"
+    identifiers:
+      - type: other
+        value: "arXiv:2406.02532"
+        description: arXiv identifier
+  - type: article
+    title: "Roofline: An Insightful Visual Performance Model for Multicore Architectures"
+    authors:
+      - family-names: "Williams"
+        given-names: "Samuel"
+      - family-names: "Waterman"
+        given-names: "Andrew"
+      - family-names: "Patterson"
+        given-names: "David"
+    year: 2009
+    journal: "Communications of the ACM"
+    volume: 52
+    issue: 4
+    start: 65
+    end: 76
+    doi: "10.1145/1498765.1498785"
+    url: "https://doi.org/10.1145/1498765.1498785"
+  - type: conference-paper
+    title: "Fast Inference from Transformers via Speculative Decoding"
+    authors:
+      - family-names: "Leviathan"
+        given-names: "Yaniv"
+      - family-names: "Kalman"
+        given-names: "Matan"
+      - family-names: "Matias"
+        given-names: "Yossi"
+    year: 2023
+    conference:
+      name: "Proceedings of the 40th International Conference on Machine Learning (ICML 2023)"
+    url: "https://proceedings.mlr.press/v202/leviathan23a.html"
+    identifiers:
+      - type: other
+        value: "arXiv:2211.17192"
+        description: arXiv identifier
+  - type: article
+    title: "Accelerating Large Language Model Decoding with Speculative Sampling"
+    authors:
+      - family-names: "Chen"
+        given-names: "Charlie"
+      - family-names: "Borgeaud"
+        given-names: "Sebastian"
+      - family-names: "Irving"
+        given-names: "Geoffrey"
+      - family-names: "Lespiau"
+        given-names: "Jean-Baptiste"
+      - family-names: "Sifre"
+        given-names: "Laurent"
+      - family-names: "Jumper"
+        given-names: "John"
+    year: 2023
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2302.01318"
+    identifiers:
+      - type: other
+        value: "arXiv:2302.01318"
+        description: arXiv identifier
+  - type: conference-paper
+    title: "EAGLE-3: Scaling up Inference Acceleration of Large Language Models via Training-Time Test"
+    authors:
+      - family-names: "Li"
+        given-names: "Yuhui"
+      - family-names: "Wei"
+        given-names: "Fangyun"
+      - family-names: "Zhang"
+        given-names: "Chao"
+      - family-names: "Zhang"
+        given-names: "Hongyang"
+    year: 2025
+    conference:
+      name: "Advances in Neural Information Processing Systems 38 (NeurIPS 2025)"
+    doi: "10.52202/085713-4562"
+    url: "https://doi.org/10.52202/085713-4562"
+    identifiers:
+      - type: other
+        value: "arXiv:2503.01840"
+        description: arXiv identifier
+  - type: article
+    title: "Automated Tensor Scheduling for Hybrid CPU-GPU LLM Inference on Consumer Devices"
+    authors:
+      - family-names: "Liu"
+        given-names: "Yangyijian"
+      - family-names: "Ye"
+        given-names: "Hongyi"
+      - family-names: "Li"
+        given-names: "Mingyang"
+      - family-names: "Li"
+        given-names: "Wu-jun"
+    year: 2026
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2607.10183"
+    identifiers:
+      - type: other
+        value: "arXiv:2607.10183"
+        description: arXiv identifier
+  - type: conference-paper
+    title: "MMLU-Pro: A More Robust and Challenging Multi-Task Language Understanding Benchmark"
+    authors:
+      - family-names: "Wang"
+        given-names: "Yubo"
+      - family-names: "Ma"
+        given-names: "Xueguang"
+      - family-names: "Zhang"
+        given-names: "Ge"
+      - family-names: "Ni"
+        given-names: "Yuansheng"
+      - family-names: "Chandra"
+        given-names: "Abhranil"
+      - family-names: "Guo"
+        given-names: "Shiguang"
+      - family-names: "Ren"
+        given-names: "Weiming"
+      - family-names: "Arulraj"
+        given-names: "Aaran"
+      - family-names: "He"
+        given-names: "Xuan"
+      - family-names: "Jiang"
+        given-names: "Ziyan"
+      - family-names: "Li"
+        given-names: "Tianle"
+      - family-names: "Ku"
+        given-names: "Max"
+      - family-names: "Wang"
+        given-names: "Kai"
+      - family-names: "Zhuang"
+        given-names: "Alex"
+      - family-names: "Fan"
+        given-names: "Rongqi"
+      - family-names: "Yue"
+        given-names: "Xiang"
+      - family-names: "Chen"
+        given-names: "Wenhu"
+    year: 2024
+    conference:
+      name: "Advances in Neural Information Processing Systems 37 (NeurIPS 2024), Datasets and Benchmarks Track"
+    url: "https://arxiv.org/abs/2406.01574"
+    identifiers:
+      - type: other
+        value: "arXiv:2406.01574"
+        description: arXiv identifier
+  - type: article
+    title: "Training Verifiers to Solve Math Word Problems"
+    authors:
+      - family-names: "Cobbe"
+        given-names: "Karl"
+      - family-names: "Kosaraju"
+        given-names: "Vineet"
+      - family-names: "Bavarian"
+        given-names: "Mohammad"
+      - family-names: "Chen"
+        given-names: "Mark"
+      - family-names: "Jun"
+        given-names: "Heewoo"
+      - family-names: "Kaiser"
+        given-names: "Lukasz"
+      - family-names: "Plappert"
+        given-names: "Matthias"
+      - family-names: "Tworek"
+        given-names: "Jerry"
+      - family-names: "Hilton"
+        given-names: "Jacob"
+      - family-names: "Nakano"
+        given-names: "Reiichiro"
+      - family-names: "Hesse"
+        given-names: "Christopher"
+      - family-names: "Schulman"
+        given-names: "John"
+    year: 2021
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2110.14168"
+    identifiers:
+      - type: other
+        value: "arXiv:2110.14168"
+        description: arXiv identifier
+  - type: article
+    title: "Gemma 4 Technical Report"
+    authors:
+      - name: "Gemma Team, Google DeepMind"
+    year: 2026
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2607.02770"
+    identifiers:
+      - type: other
+        value: "arXiv:2607.02770"
+        description: arXiv identifier
+  - type: article
+    title: "gpt-oss-120b & gpt-oss-20b Model Card"
+    authors:
+      - name: "OpenAI"
+    year: 2025
+    journal: "arXiv preprint"
+    url: "https://arxiv.org/abs/2508.10925"
+    identifiers:
+      - type: other
+        value: "arXiv:2508.10925"
+        description: arXiv identifier
