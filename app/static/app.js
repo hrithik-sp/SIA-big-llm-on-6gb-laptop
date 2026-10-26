@@ -452,10 +452,15 @@ async function stream() {
   };
   v.d.classList.add("live"); document.body.classList.add("working");
   am.tools = [];
+  // heard in the follow-up window without "Hey Sia": Sia may answer NO_REPLY (people talking nearby), and then
+  // the exchange is dropped without a word; until the text can't be NO_REPLY any more, it isn't shown or spoken
+  const followup = !!S.followupNext; S.followupNext = false;
+  const maybeSilent = () => followup && NO_REPLY.startsWith(am.answer.trim());
+  let fed = 0;
   try {
     const r = await fetch("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" }, signal: S.abort.signal,
-      body: JSON.stringify({ mode: S.mode, model: S.model, think: $("#think").checked, messages: buildApiMessages(), library: "library", voice: V.on }),
+      body: JSON.stringify({ mode: S.mode, model: S.model, think: $("#think").checked, messages: buildApiMessages(), library: "library", voice: V.on, followup }),
     });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
     const reader = r.body.getReader(), dec = new TextDecoder();
@@ -480,7 +485,9 @@ async function stream() {
         if (tFirst == null && (delta.content || delta.reasoning_content)) { tFirst = performance.now(); wait.remove(); }
         if (delta.content && V.on && V.tText == null) V.tText = performance.now();  // for the text-to-voice gap
         if (delta.reasoning_content) am.reasoning += delta.reasoning_content;
-        if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; voiceFeed(delta.content); }
+        if (delta.content) { if (am.reasoning && tThinkEnd == null) tThinkEnd = performance.now(); am.answer += delta.content; }
+        if (maybeSilent()) continue;
+        if (am.answer.length > fed) { voiceFeed(am.answer.slice(fed)); fed = am.answer.length; }
         paint();
       }
     }
@@ -493,6 +500,13 @@ async function stream() {
     S.streaming = false; $("#send").hidden = false; $("#stop").hidden = true; busy(false);
     if (am.error) { V.pending = ""; } else voiceFlush();
     if (V.on && !V.playing && !V.say.length) voiceState("idle");
+  }
+  if (followup && !am.error && am.answer.trim() === NO_REPLY) {  // not said to Sia: drop it, say nothing
+    const u = v.d.previousElementSibling;
+    v.d.remove(); if (u && u.classList.contains("user")) u.remove();
+    if (S.chat.messages.length && S.chat.messages[S.chat.messages.length - 1].role === "user") S.chat.messages.pop();
+    if (!S.chat.messages.length) { S.chat = null; showHome(true); }
+    pollStatus(); return;
   }
   if (am.reasoning) am.think_s = ((tThinkEnd || performance.now()) - (tFirst || t0)) / 1000;
   const parts = [modelName(model)];
@@ -619,6 +633,7 @@ async function voiceEvents() {
 // talks first PAUSES its voice; only real words from the user stop it. An echo of Sia's own voice (likely at
 // high volume), a short "okay" / "mm-hm", or noise resumes it where it paused. The first 0.7 s of a reply,
 // when echo is worst, never pauses it (LiveKit uses 1 s; shorter keeps interrupting snappy). A reply still being written is never cancelled by a sound alone.
+// Nothing pauses a reply before its first word plays: people talking nearby once held the first sentence back ~5 s.
 // (A sound that stopped speech at once made Sia cut its own sentence and drop the next reply.)
 const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]?hm+|sure|got it|i see)[.!?]*$/i;
 // Who is Sia being spoken to by? In "wake" mode (Settings, the default) only speech with "Hey Sia" (found by
@@ -626,14 +641,16 @@ const BACKCHANNEL = /^(ok(ay)?|yeah|yes|yep|right|mm+|hmm+|uh[- ]?huh|mhm|mm[- ]
 // talking nearby is never answered, and while Sia speaks only "Hey Sia", "stop" or "wait" interrupt it.
 // (In always-listening mode a friend's conversation was answered line by line.)
 const STOP_RX = /^\W*(stop|wait|hold on|shut up|enough|pause|be quiet|quiet|cancel)\b/i;
+// "pause listening" works like the pause button ("Pause listening." once went to the model, which ran tools)
+const PAUSE_LISTEN_RX = /^\W*(?:(?:please|can you|could you)\s+)?(?:(?:pause|stop|mute)\s+(?:listening|the mic|the microphone|your mic)|stop listening|don.?t listen|mute yourself)\b/i;
 function onVoiceEvent(ev) {
   if (ev.type === "wake") {
     // the spotter's quick guess: pause, and let the transcript decide (it once fired on "Hey, see you tomorrow")
-    if ((V.playing || V.say.length) && performance.now() - V.speakingSince > 700) pauseSpeech();
+    if (V.playing && performance.now() - V.speakingSince > 700) pauseSpeech();
     voiceState("hearing");
   } else if (ev.type === "speech_start") {
     voiceState("hearing");
-    if ((V.playing || V.say.length) && performance.now() - V.speakingSince > 700) pauseSpeech();
+    if (V.playing && performance.now() - V.speakingSince > 700) pauseSpeech();
   } else if (ev.type === "transcript") {
     clearTimeout(V.resumeTimer);
     const speaking = V.playing || V.say.length || V.paused;
@@ -645,12 +662,18 @@ function onVoiceEvent(ev) {
     const justSpoke = performance.now() - V.lastEnd < 3000;  // recognition ends ~0.6 s after the sound does
     if (((speaking || justSpoke) && isEcho(ev.text)) || (speaking && BACKCHANNEL.test(ev.text.trim()))) { resumeSpeech(); return; }
     const text = ev.wake ? ev.request : ev.text;  // the server strips the wake phrase
+    if (PAUSE_LISTEN_RX.test(text)) {
+      if (speaking || S.streaming) bargeIn();
+      if (!V.muted) toggleListening();
+      queueSpeech("Okay, I've stopped listening. Press pause again when you want me back.");
+      return;
+    }
     if (speaking || S.streaming) bargeIn();  // real words: Sia stops and answers them
     voiceState("idle");
     if (!/\w/.test(text)) {
       queueSpeech("Yes?"); followUp(); return;  // just "Hey Sia": acknowledge, then listen for the request
     }
-    askByVoice(text.charAt(0).toUpperCase() + text.slice(1));
+    askByVoice(text.charAt(0).toUpperCase() + text.slice(1), V.listen === "wake" && !ev.wake);
   } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
 }
@@ -699,12 +722,14 @@ function bargeIn() {
   if (V.paused) { V.paused = false; if (V.out) V.out.resume().catch(() => {}); }
   if (S.streaming) stop();
 }
-async function askByVoice(text) {
+async function askByVoice(text, followup = false) {
   for (let i = 0; i < 40 && S.streaming; i++) await new Promise((r) => setTimeout(r, 50));  // let a stopped reply finish
   if (S.streaming) return;
   $("#input").value = text; autosize();
+  S.followupNext = followup;
   send();
 }
+const NO_REPLY = "[no reply]";  // the server's word for "that wasn't said to me" (server.NO_REPLY)
 // speaking: complete sentences go out as soon as they're written; the next is fetched while one plays
 // The first piece of a reply is cut short (at a comma or after ~8 words) so its audio is ready quickly; the rest
 // goes sentence by sentence, made while earlier pieces play (a run-on is cut at 7 words). A long first sentence once made the voice

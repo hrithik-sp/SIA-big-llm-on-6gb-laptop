@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.2.1 (prepared, not yet released): voice in a busy room
+
+- **Speaks as soon as it writes:** people talking nearby no longer hold Sia's first words back (the voice now
+  starts 1–2 s after the text instead of ~5 s).
+- **Ignores people talking nearby:** after an answer, a line that wasn't said to Sia gets no reply instead of an
+  answer, and doesn't keep the conversation going.
+- **Understands misheard names:** "Arya Bata" is answered as Aryabhata ("I assume you mean ..."), while people it
+  doesn't know still get "I don't know".
+- **"Pause listening"** (or "stop listening", "mute the mic") works like the pause button.
+- **Days until a date** are worked out exactly ("60 days until Christmas"), also in voice mode.
+- **Stays quick after you switch windows:** showing Sia again no longer reloads its starting state over your
+  conversation.
+
 ## v1.2.0: Sia acts on your laptop
 
 ### New: Sia runs your laptop, with your approval

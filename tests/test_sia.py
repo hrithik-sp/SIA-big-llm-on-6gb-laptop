@@ -274,6 +274,28 @@ class SettingsAndTools(unittest.TestCase):
         body, _, _ = server.build_request({"mode": "chat", "think": False, "messages": [{"role": "user", "content": "yo"}]})
         self.assertNotIn("tool_choice", body)
 
+    def test_window_show_never_restores_over_a_conversation(self):
+        calls = []
+        orig = (server.CHAT.states, server.CHAT.ensure, server.restore_warm, server.CHAT.primed)
+        try:
+            server.CHAT.states = lambda: {"gemma": "loaded"}
+            server.CHAT.ensure = lambda name: calls.append("ensure")
+            server.restore_warm = lambda path: calls.append("restore") or True
+            server.CHAT.primed = True  # loaded and in use
+            server.preload("gemma")
+            self.assertEqual(calls, [])
+        finally:
+            server.CHAT.states, server.CHAT.ensure, server.restore_warm, server.CHAT.primed = orig
+
+    def test_date_spans_are_worked_out_with_a_tool(self):
+        """Spoken replies don't think: "how many days until Christmas" by heart came out 214 and 66."""
+        for text, forced in (("How many days are left until Christmas?", True), ("How long until Diwali?", True),
+                             ("how long is a marathon?", False), ("How much RAM is left?", False)):
+            body, _, _ = server.build_request({"mode": "chat", "voice": True,
+                                               "messages": [{"role": "user", "content": text}]})
+            self.assertEqual(body.get("tool_choice") == "required", forced, text)
+            self.assertEqual("run_python (datetime)" in body["messages"][-1]["content"], forced, text)
+
     def test_day_questions_get_the_coming_weekdays(self):
         def note(text):
             body, _, _ = server.build_request({"mode": "chat", "messages": [{"role": "user", "content": text}]})
@@ -654,6 +676,31 @@ class Voice(unittest.TestCase):
         self.assertEqual(len(audio), 8000 + 16000 + 2 * (v.RATE // 10))  # one piece, short gaps between
         self.assertTrue(in_window and spotted)  # the window from its start, the wake phrase from any part
         self.assertIsNone(L.hold_until)
+
+    def test_follow_up_window_closes_once_a_request_is_taken(self):
+        """A request heard in the window closes it (the page reopens it after the answer), so people talking during
+        the reply aren't taken as addressed; "Hey Sia." alone opens it for the request."""
+        import queue
+        import threading
+        v = server.voice
+        orig = v.transcribe
+        try:
+            for said, open_after in (("What about twenty percent?", False), ("Hey Sia.", True)):
+                L = v.Listener.__new__(v.Listener)
+                L.mode, L.closed, L.events, L.work = "wake", False, queue.Queue(), queue.Queue()
+                L.parts, L.hold_until, L.turn_lock, L.in_speech, L.fed = [], None, threading.Lock(), False, 0
+                L.awake_until = 10 ** 9 if not open_after else 0
+                v.transcribe = lambda seg, said=said: said
+                t = threading.Thread(target=L._transcriber, daemon=True)
+                t.start()
+                L.work.put((server.np.zeros(1600, server.np.float32), not open_after, open_after))
+                ev = L.events.get(timeout=5)
+                L.closed = True
+                t.join(2)
+                self.assertTrue(ev["addressed"], said)
+                self.assertEqual(L.awake_until > 0, open_after, said)
+        finally:
+            v.transcribe = orig
 
     def test_turn_features_shape(self):
         """Whisper log-mel for Smart Turn: 80 x 800 (8 s), short audio padded, a floor 8 log10 units under the peak."""

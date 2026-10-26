@@ -444,6 +444,10 @@ class Listener:
                 woke, request = wake_split(text, spotted) if self.mode == "wake" else (False, text)
                 if woke and not request:
                     self.awake(FOLLOW_UP_S)  # just "Hey Sia": the request follows after a pause
+                elif in_window or woke:
+                    # a request was taken: the window reopens when Sia has answered (the page's followUp). Left
+                    # open, people talking nearby during the reply counted as addressed and held its voice back.
+                    self.awake(0)
                 self.events.put({"type": "transcript", "text": text, "addressed": in_window or woke, "wake": woke,
                                  "request": request, "seconds": round(len(seg) / RATE, 2)})
             else:

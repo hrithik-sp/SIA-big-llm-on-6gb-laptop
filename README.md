@@ -131,12 +131,12 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (68 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (69 findings) |
 | [`docs/SIA.md`](docs/SIA.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
 | `app/` | Sia (Python backend, HTML/JS UI, Windows integration) |
-| `tests/` | 91 unit tests |
+| `tests/` | 95 unit tests |
 | `patches/` | Two small llama.cpp patches (llama-bench MoE cache option; chat-corpus perplexity) |
 | `results/` | Raw logs of every run (JSON lines) and model-file hashes |
 
@@ -144,7 +144,7 @@ A one-click desktop app built on these results:
 
 ```powershell
 pip install -r requirements.txt
-python -m unittest discover tests          # 91 tests, no GPU or models needed
+python -m unittest discover tests          # 95 tests, no GPU or models needed
 ```
 
 - **Run Sia:** build llama.cpp, download the five model files, run `app\install.ps1`.

@@ -86,7 +86,7 @@ Instead of a new special-purpose tool for every kind of question, Sia has two ge
 
 ### Voice mode
 
-Tap the microphone button and say **"Hey Sia"**, then your request ("Hey Sia, what time is it?"). Sia answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored; while Sia speaks, "Hey Sia", "stop" or "wait" interrupt it. The pause button stops listening; Settings has "Always listening" for when you're alone.
+Tap the microphone button and say **"Hey Sia"**, then your request ("Hey Sia, what time is it?"). Sia answers aloud, and both sides appear in the chat as usual. For a few seconds after it answers you can carry on without the wake phrase. Other people talking nearby are ignored; while Sia speaks, "Hey Sia", "stop" or "wait" interrupt it. The pause button stops listening (or say "pause listening"); Settings has "Always listening" for when you're alone. If someone nearby talks right after an answer and it wasn't meant for Sia, Sia stays quiet.
 It is the same model and personality, answering in a spoken style. Talk over it to interrupt; tap the
 button again to stop.
 
@@ -240,7 +240,7 @@ To run it without installing: `python app\server.py` (or `--background`, `--mode
 
 | Command | What it checks |
 |---|---|
-| `python -m unittest discover tests` | 91 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
+| `python -m unittest discover tests` | 95 unit tests, including request building, the emoji filter, the API key on every server, the path guard and the RAM-aware default |
 | `python tools\sia_e2e.py <testdir>` | Real models end to end: Chat, See, Read, Library, Think deep, Stop and Quit (12/12, finding 43) |
 | `python tools\sia_tools_check.py ["question" ...]` | Tool use with real models, including a denied call (finding 45); with arguments, your own questions (finding 55) |
 | `python tools\sia_latency_check.py` | Reply speed over a six-turn chat and prompt-cache reuse (finding 55) |

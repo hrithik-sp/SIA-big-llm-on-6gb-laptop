@@ -1802,6 +1802,36 @@ Goal: Sprout separate from Edge, quick and smooth.
       Turn v3.2 (huggingface.co/pipecat-ai/smart-turn-v3) and its test set (pipecat-ai/smart-turn-data-v3.2-test);
       VoiceBench (arXiv 2410.17196; hlt-lab/voicebench, sd-qa); BFCL (gorilla.cs.berkeley.edu).
 
+69. **Voice in a busy room: fixes from a real session.** A spoken session with people talking nearby showed five
+    problems; each was traced in the code and fixed, then checked with the real model.
+    - **The voice started ~5 s after the text.** Speech heard in the follow-up window paused Sia's voice until it was
+      transcribed (or 2.5 s passed), and the window stayed open while Sia answered. Before the first sentence had
+      played, the 0.7 s grace period didn't apply (it counts from the start of playback), so people talking nearby
+      held the first words back. Now nothing pauses a reply before its first word plays, and the window closes once a
+      request is taken (the page reopens it when Sia has finished speaking). Real-page check: text to voice 1.9 s (a
+      reply with a calculator call) and 1.1 s; voice-to-voice median 4.85 s over 4 turns.
+    - **The saved warm-up was restored over the conversation.** Every time the window was shown (at most every 30 s),
+      the 1.2–1.6 GB warm-up was restored into the model, replacing the conversation it held (three restores in six
+      minutes in the log), so the next reply re-read the chat. It is now restored only after a fresh start or a wake
+      from sleep. Cold start unchanged: first word 21.3 s with the restore, 45.1 s without.
+    - **Misheard names were refused.** "Who is Arya Bata?" got "I don't have any information" (0/4 with Yandamuri
+      Viranta). Spoken replies now carry a line saying the text came through speech recognition: Aryabhata 2/2, and
+      five other misheard names not in that line (Abdul Kalaam, Shrinivas Ramanujam, Elon Mask, Kanya Kumari, Swami
+      Viveka Nanda) 5/5, each said as "I assume you mean …". Unknown personal names (Ravi Kumar, Ananya, Priya, Doctor
+      Rao) still got "I don't know" (4/4). Yandamuri Veerendranath stays unknown in voice: thin knowledge, not spelling.
+    - **Background talk became requests.** Lines from people nearby, heard in the follow-up window, were answered,
+      and each answer reopened the window. Such lines are now sent marked "heard without Hey Sia", and Sia may answer
+      "[no reply]": the page then removes the exchange and says nothing, which also ends the chain. With the owner's
+      seven background lines and six real follow-ups in one conversation, twice: real follow-ups answered **12/12**,
+      background lines silent **12/14** (the other two got "I didn't catch that", as before).
+    - **"Pause listening" went to the model**, which ran a system-information tool and then asked for the location.
+      "Pause/stop listening", "mute the mic" and "mute yourself" now work like the pause button, on the page.
+    - **Date gaps counted by heart.** Spoken replies don't think, and "How many days are left until Christmas?" came
+      out 214 and 66 (it was 60). Questions like "how many days/hours until …" and "how long until/ago …" now must use
+      a tool, with a note to work dates out in Python: 5/5 right, plus Diwali (13 days) and hours to midnight.
+    - Unit tests 95 (new: the window-show guard, the follow-up window closing, date spans); the window test fails on
+      the old listener code.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |

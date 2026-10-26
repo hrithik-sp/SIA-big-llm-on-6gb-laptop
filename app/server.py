@@ -190,6 +190,7 @@ class ChatModel:
     def __init__(self):
         self.lock = threading.Lock()
         self.name, self.status, self.error = None, "unloaded", None
+        self.primed = False  # the running server holds the warm-up or a conversation (see preload)
 
     def ensure(self, name):
         with self.lock:
@@ -198,6 +199,7 @@ class ChatModel:
                 return
             self._stop()
             self.name, self.status, self.error = name, "loading", None
+            self.primed = False
             (DATA / "kv").mkdir(parents=True, exist_ok=True)  # saved warm-up prompts (see preload)
             p = spawn("chat", [str(BIN / "llama-server.exe"), *preset_args(name), "--host", "127.0.0.1",
                                "--port", str(CHAT_PORT), "--api-key", STATE["key"],
@@ -280,8 +282,14 @@ def preload(name):
     """Load the model, or wake it if it is asleep, ahead of the first message; then pre-read the
     Chat instructions and tool list, so the first message only has to process its own words."""
     try:
-        if CHAT.states().get(name) != "sleeping":
+        state = CHAT.states().get(name)
+        if state == "loaded" and CHAT.primed:
+            # already up and in use: a restore would replace the conversation the model holds with the bare
+            # instructions (each window show once restored 1.6 GB and made the next reply re-read the chat)
+            return
+        if state != "sleeping":
             CHAT.ensure(name)
+        CHAT.primed = True
         if name in MODEL_INFO:  # not the vision preset: image chats build a different prompt
             MCP_READY.wait(60)  # the tool list must be final, or the pre-read prompt is wasted
             body, _, _ = build_request({"mode": "chat", "model": name, "think": False,
@@ -871,6 +879,11 @@ def is_math(text):
                 or (QUANTITY_RX.search(text) and numbers >= 2))  # "50000 at 7% for 10 years, how much ..."
 
 
+# "how many days until Christmas": spoken replies don't think, and counting days by heart gave 214 and 66 (it's 60)
+DATE_SPAN_RX = re.compile(r"\bhow (many (days|weeks|months|years|hours|minutes)|long)\b[^?.!]*"
+                          r"\b(until|till|since|ago|before|left|away|to go)\b", re.I)
+
+
 def is_bare_math(text):
     """Just an expression ("11*2", "calculate and tell 876*88894"): the calculator answers it, no thinking."""
     rest = FILLER_MATH_RX.sub(" ", text or "")
@@ -880,6 +893,9 @@ def is_bare_math(text):
 # messages about days get the coming dates with their weekdays in the note (tools.now_context)
 DAYS_RX = re.compile(r"\b(today|tonight|tomorrow|yesterday|weekend|(this|next|coming) week|days?|"
                      r"(mon|tues|wednes|thurs|fri|satur|sun)day|plan|schedule|timetable|deadline|exams?|due)\b", re.I)
+
+
+NO_REPLY = "[no reply]"  # a follow-up that wasn't for Sia: the page drops it and says nothing
 
 
 def needs_reasoning(text):
@@ -1057,9 +1073,20 @@ def build_request(req):
                 "what you knew and say it may have changed since your training. Only say you searched, checked or "
                 "found something if a tool did it in this reply.") if use_tools else ""
         spoken = (" Spoken reply, read aloud: talk naturally in one to three short sentences, as a sharp assistant "
-                  "speaks to their boss; no markdown, lists, symbols or emojis; the full text also shows in the chat.") if req.get("voice") else ""
+                  "speaks to their boss; no markdown, lists, symbols or emojis; the full text also shows in the chat."
+                  # "Who is Arya Bata?" (Aryabhata) and "Yandamuri Viranta" (Veerendranath) got "I don't have any
+                  # information": the recogniser spells names by sound
+                  " The message came through speech recognition, which spells names by sound: if a name sounds like "
+                  "a well-known person, place or thing (\"Arya Bata\" = Aryabhata), answer about that one and say "
+                  "who you took it to be.") if req.get("voice") else ""
+        # heard in the follow-up window, without "Hey Sia": people talking nearby once got a reply line after line
+        followup = (" This was heard right after your last reply, without \"Hey Sia\", so it may be other people "
+                    "talking nearby or a mishearing. If it doesn't read as something said to you that fits this "
+                    f"conversation, reply with exactly {NO_REPLY} and nothing else.") if req.get("followup") else ""
         calc_note = (" Compute every number in this reply with the calculate tool and quote its result exactly."
                      if is_math(last_text) and not wants_action(last_text) else "")
+        if DATE_SPAN_RX.search(last_text):
+            calc_note += " Work out dates and the time between them with run_python (datetime), never by counting."
         memory = ""
         host = tools.MCP["host"]
         if host and "memory" in host.servers and not mode.get("rag"):
@@ -1074,7 +1101,7 @@ def build_request(req):
                  + (", and it is not a game move: call no tool (\"ok\" during Wordle once became a made-up guess)."
                     if game else ".") if ACK_RX.match(last_text) else "")
         stamp = (f"[Sia note, not written by the user; never mention it: {tools.now_context(bool(DAYS_RX.search(last_text)))}"
-                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{greet}{script_note}]")
+                 f"{' ' + game if game else ''}{rule}{calc_note}{memory}{spoken}{followup}{greet}{script_note}]")
         last = messages[-1]
         if isinstance(last.get("content"), list):
             last["content"] = list(last["content"]) + [{"type": "text", "text": stamp}]
@@ -1099,7 +1126,7 @@ def build_request(req):
             body["tool_choice"] = "required"  # an action is done by a tool, never just announced
         if tools.games.is_game_turn(last_text):
             body["tool_choice"] = "required"  # the referee scores game moves; the model must not improvise them
-        if is_math(last_text):
+        if is_math(last_text) or DATE_SPAN_RX.search(last_text):
             body["tool_choice"] = "required"  # numbers come from the calculator, never from the model's head
     think = bool(req.get("think", mode.get("think", False)))
     if (not think and mode.get("style") == "messenger" and needs_reasoning(last_text)
@@ -1477,6 +1504,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         emit({"type": "meta", "model": model, "sources": sources})
         try:
             CHAT.ensure(model)  # loads or swaps the model if needed (the UI shows "loading")
+            CHAT.primed = True  # a conversation is in the cache now: a later window show must not restore over it
         except RuntimeError as e:
             emit({"type": "error", "error": str(e)})
             return

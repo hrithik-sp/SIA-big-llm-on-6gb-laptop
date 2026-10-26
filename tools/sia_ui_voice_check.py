@@ -59,10 +59,10 @@ const t0 = Date.now(); let state = null, toasts = new Set();
 while (Date.now() - t0 < 90000 + NQ * 60000) {
   state = (await evaluate(`JSON.stringify({ on: V.on, toast: document.querySelector('#toast').hidden ? '' : document.querySelector('#toast').textContent,
     messages: S.chat ? S.chat.messages.map((m) => ({ role: m.role, text: m.content || m.answer || '', error: m.error || '', stats: m.stats || '' })) : [],
-    spoken: V.recent.map((r) => r.text), gap: V.gap, gaps: V.gaps || [], streaming: S.streaming, placeholder: document.querySelector('#input').placeholder })`)).result?.value;
+    spoken: V.recent.map((r) => r.text), gap: V.gap, gaps: V.gaps || [], streaming: S.streaming, voiceIdle: !V.playing && !V.say.length, placeholder: document.querySelector('#input').placeholder })`)).result?.value;
   const s = JSON.parse(state || "{}");
   if (s.toast) toasts.add(s.toast);
-  if (s.messages && s.messages.filter((m) => m.role === "assistant" && m.text).length >= NQ && !s.streaming && s.spoken.length) break;
+  if (s.messages && s.messages.filter((m) => m.role === "assistant" && m.text).length >= NQ && !s.streaming && s.spoken.length && s.voiceIdle) break;  // the last answer spoken too
   await new Promise((r) => setTimeout(r, 1000));
 }
 console.log(JSON.stringify({ click: click.result?.value, state: JSON.parse(state || "{}"), toasts: [...toasts], errors, seconds: (Date.now() - t0) / 1000 }));

@@ -565,6 +565,12 @@ Full commands: lab notebook, "Recommended settings".
 | 56 | "Play again" mid-Wordle ended the game and Sia said a new word was ready | The model picked the wrong game action | The referee starts a fresh game whenever the user asks for one | 68 |
 | 57 | A study plan "starting today" began tomorrow, once headed "Tuesday (Today)" | The request didn't trigger a think first, and weekdays were left to the model | The coming dates with weekdays go in the note, and plans think first: 6/6 started today instead of 1/4 | 68 |
 | 58 | Voice mode held 460 MB it never used | spaCy's thinc imports PyTorch whenever it is installed | Torch is hidden from Sia's process; pronunciation identical on all 32 test sentences | 68 |
+| 59 | The voice started ~5 s after the text in a room with people talking | Nearby speech paused the reply before its first word, and the follow-up window stayed open during the reply | Nothing pauses a reply before it plays; the window closes once a request is taken: 1.1–1.9 s | 69 |
+| 60 | Replies slowed after the window was shown again | The saved warm-up was restored over the conversation each time | Restored only after a fresh start or a wake | 69 |
+| 61 | "Who is Arya Bata?": "no information" | The recogniser spells names by sound | Spoken replies are told so: misheard famous names 7/7, unknown people still "I don't know" | 69 |
+| 62 | People talking nearby got answers, one after another | Anything in the follow-up window counted as a request | Such lines may get "[no reply]" and are dropped silently: background 12/14 silent, real follow-ups 12/12 answered | 69 |
+| 63 | "Pause listening" ran tools | The model got the command | The page handles it like the pause button | 69 |
+| 64 | "Days until Christmas" said 214 | Spoken replies counted dates by heart | Date gaps go through Python: 5/5 | 69 |
 
 ---
 
