@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.2.0 (prepared, not yet released): Sia acts on your laptop
+## v1.2.0: Sia acts on your laptop
 
 ### New: Sia runs your laptop, with your approval
 - **Open** apps by name (anything in the Start menu), documents, folders, websites and Settings pages.

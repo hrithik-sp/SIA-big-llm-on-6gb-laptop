@@ -11,15 +11,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/hrithik-sp/SPROUT-big-llm-on-6gb-laptop/actions/workflows/tests.yml"><img src="https://github.com/hrithik-sp/SPROUT-big-llm-on-6gb-laptop/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
+  <a href="https://github.com/hrithik-sp/SIA-big-llm-on-6gb-laptop/actions/workflows/tests.yml"><img src="https://github.com/hrithik-sp/SIA-big-llm-on-6gb-laptop/actions/workflows/tests.yml/badge.svg" alt="tests"></a>
   <img src="https://img.shields.io/badge/code-MIT-blue" alt="Code: MIT licence">
   <img src="https://img.shields.io/badge/docs-CC%20BY%204.0-lightgrey" alt="Docs: CC BY 4.0">
   <img src="https://img.shields.io/badge/llama.cpp-0a1ef309c-informational" alt="llama.cpp 0a1ef309c">
   <img src="https://img.shields.io/badge/Windows%2011-RTX%203050%206%20GB-555" alt="Windows 11, RTX 3050 6 GB">
 </p>
 
-<p align="center"><b>v1.1.0</b>: Sia now knows the time, your location and your devices, works as your
-assistant, and answers in 1.5–2.5 s. <a href="CHANGELOG.md">What's new</a></p>
+<p align="center"><b>v1.2.0</b>: Sia acts on your laptop with your approval, talks and listens ("Hey Sia"),
+and runs an exact calculator and a Python sandbox. <a href="CHANGELOG.md">What's new</a></p>
 
 <p align="center">
   <img src="docs/images/sia-study.png" alt="Sia explaining Dijkstra's algorithm in Study mode, running Gemma 4 26B locally" width="860">

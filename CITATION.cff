@@ -10,11 +10,11 @@ type: software
 authors:
   - given-names: Hrithik
     family-names: S P
-repository-code: "https://github.com/hrithik-sp/SPROUT-big-llm-on-6gb-laptop"
+repository-code: "https://github.com/hrithik-sp/SIA-big-llm-on-6gb-laptop"
 license:
   - MIT
   - CC-BY-4.0
-version: "1.1.0"
+version: "1.2.0"
 keywords:
   - llama.cpp
   - mixture-of-experts
