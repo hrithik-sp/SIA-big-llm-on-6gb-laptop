@@ -221,7 +221,8 @@ def main():
                                    "llama-bench, 5 repetitions × 2 shuffled rounds, AC power (findings 1–12)",
                                    tick_fmt=str),
             "speculative": bars(t, SPEC, "Speculative decoding helps Gemma, hurts gpt-oss",
-                                "Speed with a draft model vs without (1.0× = no change)",
+                                "Speed with a draft model vs without, temperature 0 (1.0× = no change; Gemma QAT at "
+                                "Google's sampling: 1.25×)",
                                 lambda v: f"{v:.2f}×", 0.6, 1.4, 1.0, [0.6, 0.8, 1.0, 1.2, 1.4],
                                 "Verifying drafted tokens loads the union of their experts (findings 35–37, 50)"),
             "threads": bars(t, THREADS, "16 threads help only while weights stream from the SSD",
