@@ -580,6 +580,10 @@ async function toggleVoice() {
     V.node.port.onmessage = (e) => { V.sendQ.push(e.data); pumpAudio(); };
     V.ctx.createMediaStreamSource(V.mic).connect(V.node);
     V.out = new AudioContext();  // playback on its own context, so Sia can pause its voice without pausing the mic
+    // "Yes?" after a bare "Hey Sia" is made once, now: made on demand it came ~1 s late and ran into the request
+    fetch("/api/voice/speak", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "Yes?" }) })
+      .then((r) => (r.ok ? r.arrayBuffer() : null)).then((b) => b && V.out && V.out.decodeAudioData(b))
+      .then((a) => { if (a) V.ackAudio = a; }).catch(() => {});
     V.on = true; $("#voice").setAttribute("aria-pressed", "true");
     $("#voice-pause").hidden = false; $("#voice-pause").setAttribute("aria-pressed", "false");
     voiceEvents(); voiceState("idle");
@@ -650,10 +654,11 @@ function onVoiceEvent(ev) {
     voiceState("hearing");
   } else if (ev.type === "speech_start") {
     voiceState("hearing");
+    stopAck();  // the request is coming already: no "Yes?" over it
     if (V.playing && performance.now() - V.speakingSince > 700) pauseSpeech();
   } else if (ev.type === "transcript") {
     clearTimeout(V.resumeTimer);
-    const speaking = V.playing || V.say.length || V.paused;
+    const speaking = (V.playing && !V.playingAck) || V.say.some((x) => !x.ack) || V.paused;  // "Yes?" isn't an answer
     if (!ev.addressed) {  // someone else talking, or the user not addressing Sia
       if ((speaking || S.streaming) && STOP_RX.test(ev.text)) { bargeIn(); voiceState("idle"); }
       else resumeSpeech();
@@ -668,14 +673,31 @@ function onVoiceEvent(ev) {
       queueSpeech("Okay, I've stopped listening. Press pause again when you want me back.");
       return;
     }
+    if ((speaking || S.streaming) && STOP_RX.test(text)) { bargeIn(); voiceState("idle"); return; }
+    // while Sia answers, only "Hey Sia" (or stop words) interrupt it: a follow-up line once cut a reply off and was
+    // then itself dropped as not meant for Sia, so the owner lost both
+    if ((speaking || S.streaming) && !ev.wake && V.listen === "wake") { resumeSpeech(); return; }
     if (speaking || S.streaming) bargeIn();  // real words: Sia stops and answers them
     voiceState("idle");
-    if (!/\w/.test(text)) {
-      queueSpeech("Yes?"); followUp(); return;  // just "Hey Sia": acknowledge, then listen for the request
+    if (!/\w/.test(text)) {  // just "Hey Sia": listen for the request, and say "Yes?" only if it doesn't follow
+      followUp();
+      clearTimeout(V.ackTimer);
+      V.ackTimer = setTimeout(sayAck, 400);
+      return;
     }
     askByVoice(text.charAt(0).toUpperCase() + text.slice(1), V.listen === "wake" && !ev.wake);
   } else if (ev.type === "speech_end") { clearTimeout(V.resumeTimer); resumeSpeech(); }
   else if (ev.type === "error") toast(ev.error, 5000);
+}
+function sayAck() {
+  if (!V.on) return;
+  if (V.ackAudio) { V.say.push({ text: "Yes?", gen: V.gen, audio: V.ackAudio, ack: true }); playNext(); }
+  else queueSpeech("Yes?");
+}
+function stopAck() {
+  clearTimeout(V.ackTimer);
+  V.say = V.say.filter((x) => !x.ack);
+  if (V.playing && V.playingAck) { try { V.playing.stop(); } catch {} }
 }
 function followUp() {  // after Sia speaks, the next few seconds need no wake phrase (like Alexa's Follow-Up Mode)
   if (V.on && V.listen === "wake") post("/api/voice/awake", { seconds: 8 }).catch(() => {});
@@ -802,7 +824,7 @@ function playNext() {
   if (performance.now() - V.lastEnd > 1500) V.speakingSince = performance.now();  // a new stretch of speech begins
   V.recent.push({ text: item.text, t: performance.now() }); V.recent = V.recent.slice(-8);
   if (V.tText != null && V.gap == null) { V.gap = (performance.now() - V.tText) / 1000; (V.gaps = V.gaps || []).push(V.gap); }
-  V.playing = src; src.start(); voiceState("speaking");
+  V.playing = src; V.playingAck = !!item.ack; src.start(); voiceState("speaking");
   prefetchSpeech();
 }
 

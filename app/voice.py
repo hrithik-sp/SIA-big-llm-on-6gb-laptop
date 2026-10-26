@@ -315,33 +315,68 @@ def transcribe(samples):
     return s.result.text.strip()
 
 
-def _sound_key(word):
-    """A word's consonant skeleton, the way it sounds: Hrithik, Rithic, Rhetic, Riddick and Ritik are all "rtk"."""
+def _sound_key(word, g=False):
+    """A word's consonant skeleton, the way it sounds: Hrithik, Rithic, Rhetic, Riddick and Ritik are all "rtk".
+    g=True also hears g as k (Redigaspy), only for the whole name run together: alone it caught "ridge"."""
     w = re.sub(r"[^a-z]", "", word.lower())
     w = re.sub(r"^h", "", w)  # a silent first h (Hrithik)
     for a, b in (("ck", "k"), ("th", "t"), ("dh", "d"), ("ph", "f"), ("q", "k"), ("c", "k"), ("d", "t"), ("z", "s")):
         w = w.replace(a, b)
+    if g:
+        w = w.replace("g", "k")
     w = re.sub(r"[aeiouyhw]", "", w)
     return re.sub(r"(.)\1+", r"\1", w)
 
 
 def fix_names(text, owner):
-    """Write the owner's name the way Settings spells it when the recogniser wrote it by sound: "Tell me about Rithic
-    SP" -> "Tell me about Hrithik S P" (the h is silent, so hotwords with the right spelling never fire: 0/60 heard
-    right on synthetic speech). Only for first names of 3+ sounding consonants; short ones would catch other words."""
+    """Write the owner's name the way Settings spells it when the recogniser wrote it by sound (the h is silent, so
+    hotwords with the right spelling never fire). On the owner's own recordings the name came out as "Rithik SP",
+    "Rithikaspi", "Redigaspy", "Hitakaspy", "Hit the gaspee" and "Rithik Spe": all are put back as "Hrithik S P".
+    Only for first names of 3+ sounding consonants; short ones would catch other words."""
     parts = (owner or "").split()
     if not parts:
         return text
     first, key = parts[0], _sound_key(parts[0])
     if len(key) < 3:
         return text
-    out = re.sub(r"[A-Za-z]+", lambda m: first if _sound_key(m.group(0)) == key and len(m.group(0)) <= len(first) + 3
-                 else m.group(0), text)
-    initials = [p for p in parts[1:] if len(p.strip(".")) == 1]
-    if len(initials) == len(parts) - 1 and initials:  # "S P" after the name: "SP", "S.P.", "S. P."
-        letters = r"\.?\s*".join(re.escape(i.strip(".")) for i in initials)
-        out = re.sub(rf"\b{re.escape(first)}\s+{letters}(?=\W|$)", " ".join([first, *initials]), out, flags=re.I)
-    return out
+    initials = [p.strip(".") for p in parts[1:]]
+    ikey = "".join(_sound_key(i) for i in initials) if initials and all(len(i) == 1 for i in initials) else ""
+    full = " ".join([first, *initials]) if ikey else first
+    toks = re.split(r"([A-Za-z]+)", text)  # separators at even indices, words at odd ones ("Rithik's": "Rithik", "s")
+    words = list(range(1, len(toks), 2))
+    out, i = [], 0
+    while i < len(words):
+        w = words[i]
+        hit = 0
+        if ikey:  # the whole name, run together ("Rithikaspi") or split oddly ("Hit the gaspee"): 1-3 words
+            whole = key + ikey
+            for n in (3, 2, 1):
+                span = words[i:i + n]
+                if len(span) < n or any(toks[s + 1].strip() for s in span[:-1]):  # only spaces between them
+                    continue
+                said = "".join(toks[s] for s in span)
+                k = _sound_key(said, g=True)
+                dropped_r = said[:1] in "Hh" and k == whole[1:]  # "Hitakaspy": the r lost after the h
+                if k == whole or dropped_r or (n == 1 and k.startswith(whole) and len(k) <= len(whole) + 2):
+                    hit = n
+                    break
+        if hit:
+            out.append(full)
+            i += hit
+        else:
+            out.append(first if _sound_key(toks[w]) == key and len(toks[w]) <= len(first) + 3 else toks[w])
+            i += 1
+        out.append(toks[words[i - 1] + 1] if words[i - 1] + 1 < len(toks) else "")
+    result = toks[0] + "".join(out)
+    if ikey:  # the initials after the name: "SP", "S.P.", "S. P.", "Spe", "Spee", "Espy"
+        def initials_after(m):
+            if _sound_key(m.group(2)) != ikey:
+                return m.group(0)
+            end = m.group(2).endswith(".") and not m.string[m.end():].strip()  # a full stop only at the end
+            return f"{m.group(1)} {' '.join(initials)}" + ("." if end else "")
+        result = re.sub(rf"\b({re.escape(first)})\s+([A-Za-z]\.\s?[A-Za-z]\.?|[A-Za-z]\s[A-Za-z]\.?|[A-Za-z]{{1,5}}\.?)"
+                        r"(?=\W|$)", initials_after, result)
+    return result
 
 
 # ---- speaking: text as a person would say it

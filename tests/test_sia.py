@@ -683,10 +683,17 @@ class Voice(unittest.TestCase):
         fix = server.voice.fix_names
         for heard, want in (("Tell me about Rythic SP.", "Tell me about Hrithik S P."), ("Who is Rhetic?", "Who is Hrithik?"),
                             ("Hey Sia, who is Rithic S.P.", "Hey Sia, who is Hrithik S P."),
-                            ("This is Rhettic Speaking.", "This is Hrithik Speaking.")):
+                            ("This is Rhettic Speaking.", "This is Hrithik Speaking."),
+                            # the owner's own recordings: the name and initials run together or split oddly
+                            ("My name is Rithikaspi.", "My name is Hrithik S P."),
+                            ("Hey Sia, who is Redigaspy?", "Hey Sia, who is Hrithik S P?"),
+                            ("Is Rithikasp your boss?", "Is Hrithik S P your boss?"), ("Hit the gaspee.", "Hrithik S P."),
+                            ("Rithik Spe.", "Hrithik S P."), ("Rithik S. P. is here", "Hrithik S P is here"),
+                            ("Write a short message to Rithik's friend.", "Write a short message to Hrithik's friend.")):
             self.assertEqual(fix(heard, "Hrithik S P"), want)
         for same in ("The rhythm is nice.", "Write a critique.", "He is a critic.", "I need a ticket.", "Is it tricky?",
-                     "Recheck the list.", "It's terrific.", "The ridge is high.", "Read it to me."):
+                     "Recheck the list.", "It's terrific.", "The ridge is high.", "Read it to me.",
+                     "Hit the gas please.", "Hrithik speaking."):
             self.assertEqual(fix(same, "Hrithik S P"), same)
         self.assertEqual(fix("who is rave", "Ravi"), "who is rave")  # short names: too many look-alikes, left alone
         self.assertEqual(server.voice._said_as("Hrithik"), "Rithik")  # the hotword as it sounds (silent h)
