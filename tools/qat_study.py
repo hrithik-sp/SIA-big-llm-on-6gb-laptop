@@ -49,6 +49,16 @@ SIZES = {
             "Q": ("google/gemma-4-E2B-it-qat-q4_0-gguf", "675cff42a74c774d6cb76f76d8eacb49b48c9b93",
                   "gemma-4-E2B_q4_0-it.gguf"),
             "template": "small"},
+    "E4B": {"O": ("google/gemma-4-E4B-it", "ee0ef6023621cff504d758262d4e04895a5af4a2"),
+            "U": ("google/gemma-4-E4B-it-qat-q4_0-unquantized", "476025a01dbf99361c062bbeca3d6a76bb4c4566"),
+            "Q": ("google/gemma-4-E4B-it-qat-q4_0-gguf", "4b4a2c1d584be7264f87aac328a1bc739ce81b6c",
+                  "gemma-4-E4B_q4_0-it.gguf"),
+            "template": "small"},
+    "12B": {"O": ("google/gemma-4-12B-it", "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7"),
+            "U": ("google/gemma-4-12B-it-qat-q4_0-unquantized", "b6ed86275a6a5735884e208bfed95b445a684ca2"),
+            "Q": ("google/gemma-4-12B-it-qat-q4_0-gguf", "29d097773436b69ff9feafd636ab4cf873786537",
+                  "gemma-4-12b-it-qat-q4_0.gguf"),
+            "template": "large"},
 }
 
 
@@ -297,7 +307,8 @@ def cmd_accuracy(a):
             wait_until(bench.on_ac, "mains power", a.wait_max, label)
             wait_until(lambda: preflight_ok(model), "preflight", a.wait_max, label)
             if os.path.exists(server_log):  # task_eval rewrites its server log; keep the earlier attempt's
-                os.replace(server_log, server_log.replace(".log", f".before-attempt{attempt}.log"))
+                stamp = datetime.datetime.fromtimestamp(os.path.getmtime(server_log)).strftime("%Y%m%d-%H%M%S")
+                os.replace(server_log, server_log.replace(".log", f".until-{stamp}.log"))
             log_event(label=label, event="start", attempt=attempt, answered=n0, total=len(ids), model=model)
             cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "task_eval.py"), model,
                    "--bench", "mmlupro", "--per-category", str(ACC_PER_CATEGORY), "--no-think", "--max-tokens",
