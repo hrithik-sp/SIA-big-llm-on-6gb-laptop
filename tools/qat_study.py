@@ -9,6 +9,7 @@ Q4_0 QAT release), O4 and U4 (O and U rounded to Q4_0 here, in exactly Q's per-t
   python tools/qat_study.py hashes E2B        # SHA-256 of every file -> results/qat_study_files.jsonl
   python tools/qat_study.py kld E2B           # the protocol's KL comparisons (tools/quality.py)
   python tools/qat_study.py compare-q E2B     # is Google's Q a plain Q4_0 rounding of U? (tensor bytes)
+  python tools/qat_study.py accuracy E2B      # MMLU-Pro, 1,400 questions each for O8, Q, O4, U8 (resumable)
   python tools/qat_study.py report E2B
 
 Downloads use tools/fetch_model.ps1 at the pinned revisions in SIZES. Every model run goes through the same
@@ -22,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bench  # noqa: E402
@@ -236,6 +238,90 @@ def cmd_compare_q(a):
     print(f"{a.size}: {same} tensors byte-identical, {differ} differ, of {same + differ} shared")
 
 
+ACC_TAG = "qat-study-acc-v1"
+ACC_PER_CATEGORY = 100  # 14 subjects -> 1,400 questions (protocol, measurement 2)
+# The primary pair (Q against O8) first, then the secondary versions, so a session cut short still leaves the
+# primary comparison complete.
+ACC_ORDER = ["O8", "Q", "O4", "U8"]
+RUNS_OUT = os.path.join(pf.ROOT, "results", "qat_study_runs.jsonl")
+
+
+def log_event(**rec):
+    rec = {"time": datetime.datetime.now().isoformat(timespec="seconds"), "tag": ACC_TAG, **rec}
+    with open(RUNS_OUT, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+    print("EVENT", json.dumps(rec), flush=True)
+
+
+def preflight_ok(model, ram_margin=1.0):
+    """The project's gate (tools/preflight.py) for task_eval's server settings, plus bench.py's 1 GiB RAM margin."""
+    js = os.path.join(bench.LLM_HOME, "preflight-accuracy.json")
+    rc = pf.main([model, "-ngl", "99", "-c", "4096", "--no-mmap", "--json", js])
+    with open(js) as f:
+        r = json.load(f)
+    return rc == 0 and r["plan"]["ram_need"] + ram_margin * pf.GiB <= r["ram_available"]
+
+
+def wait_until(check, what, wait_max, label):
+    """Poll check() every 10 minutes until it holds; give up after wait_max seconds."""
+    waited = 0
+    while not check():
+        if waited >= wait_max:
+            log_event(label=label, event="gave-up", reason=what)
+            raise SystemExit(f"{label}: gave up waiting for {what}")
+        log_event(label=label, event="waiting", reason=what)
+        time.sleep(600)
+        waited += 600
+
+
+def cmd_accuracy(a):
+    """MMLU-Pro accuracy (protocol, measurement 2) through tools/task_eval.py: temperature 0, thinking off, at most
+    4,096 answer tokens. Per the stopping rule, a run cut short is resumed for the remaining questions only
+    (--skip-from its own tag), and every start and interruption is recorded in results/qat_study_runs.jsonl.
+    task_eval's per-question output goes to a log file and only counts are printed here: no accuracy is looked at
+    before a version's run is complete."""
+    import ctypes
+    import task_eval
+    ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)  # no system sleep while this process runs
+    ids = {p[0] for p in task_eval.load_problems("mmlupro", 0, ACC_PER_CATEGORY, 0)}
+    answered = lambda label: {r["idx"] for r in task_eval.load_rows()
+                              if r["tag"] == ACC_TAG and r["label"] == label and r["idx"] in ids}
+    for code in a.versions.split(","):
+        model, label = gguf_path(a.size, code), f"{a.size}-{code}"
+        log = os.path.join(bench.LLM_HOME, f"acc-{ACC_TAG}-{label}.log")
+        server_log = os.path.join(bench.LLM_HOME, f"server-{ACC_TAG}-{label}.log")
+        for attempt in range(1, a.retries + 2):
+            n0 = len(answered(label))
+            if n0 >= len(ids):
+                break
+            wait_until(bench.on_ac, "mains power", a.wait_max, label)
+            wait_until(lambda: preflight_ok(model), "preflight", a.wait_max, label)
+            if os.path.exists(server_log):  # task_eval rewrites its server log; keep the earlier attempt's
+                os.replace(server_log, server_log.replace(".log", f".before-attempt{attempt}.log"))
+            log_event(label=label, event="start", attempt=attempt, answered=n0, total=len(ids), model=model)
+            cmd = [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "task_eval.py"), model,
+                   "--bench", "mmlupro", "--per-category", str(ACC_PER_CATEGORY), "--no-think", "--max-tokens",
+                   "4096", "--lm", "none", "--label", label, "--tag", ACC_TAG, "--skip-from", ACC_TAG]
+            t0 = time.time()
+            with open(log, "a", encoding="utf-8", errors="replace") as f:
+                proc = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT)
+                while proc.poll() is None:
+                    time.sleep(a.poll)
+                    n = len(answered(label))
+                    rate = (n - n0) / max(time.time() - t0, 1) * 3600
+                    eta = (len(ids) - n) / rate if rate else float("inf")
+                    print(f"{datetime.datetime.now():%H:%M} {label}: {n}/{len(ids)} answered, {rate:.0f}/h, "
+                          f"about {eta:.1f} h left", flush=True)
+            n = len(answered(label))
+            if n >= len(ids):
+                log_event(label=label, event="finished", attempt=attempt, answered=n, hours=(time.time() - t0) / 3600)
+                break
+            log_event(label=label, event="interrupted", attempt=attempt, answered=n, returncode=proc.returncode)
+            time.sleep(60)
+        else:
+            raise SystemExit(f"{label}: not finished after {a.retries + 1} attempts")
+
+
 def cmd_report(a):
     rows = []
     with open(os.path.join(pf.ROOT, "results", "quality.jsonl"), encoding="utf-8") as f:
@@ -255,7 +341,7 @@ def cmd_report(a):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    ap.add_argument("command", choices=["convert", "quantize", "hashes", "kld", "compare-q", "report"])
+    ap.add_argument("command", choices=["convert", "quantize", "hashes", "kld", "compare-q", "accuracy", "report"])
     ap.add_argument("size", choices=list(SIZES))
     ap.add_argument("--only", default="", help="kld: only these references (comma list of O, U, Q)")
     ap.add_argument("--cands", default="", help="kld: only these candidates (comma list)")
@@ -269,10 +355,15 @@ def main(argv=None):
     ap.add_argument("--allow-ssd", action="store_true",
                     help="kld: let a model that exceeds free RAM stream from the SSD (values unaffected; the "
                          "protocol allows it because speed isn't measured)")
+    ap.add_argument("--versions", default=",".join(ACC_ORDER), help="accuracy: versions in run order")
+    ap.add_argument("--retries", type=int, default=5, help="accuracy: resumes per version after an interruption")
+    ap.add_argument("--wait-max", type=int, default=4 * 3600,
+                    help="accuracy: seconds to wait for mains power or a passing preflight before giving up")
+    ap.add_argument("--poll", type=int, default=600, help="accuracy: seconds between progress lines")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)
     {"convert": cmd_convert, "quantize": cmd_quantize, "hashes": cmd_hashes, "kld": cmd_kld,
-     "compare-q": cmd_compare_q, "report": cmd_report}[a.command](a)
+     "compare-q": cmd_compare_q, "accuracy": cmd_accuracy, "report": cmd_report}[a.command](a)
     return 0
 
 
