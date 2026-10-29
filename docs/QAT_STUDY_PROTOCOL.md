@@ -77,6 +77,7 @@ answers are used for every size.
 | U → U4, Q → U4, and a byte comparison of U4's and Q's tensor data | Whether Google's file is a plain Q4_0 rounding of U (exploratory) |
 | O → O8 | The error of the Q8_0 stand-in used for accuracy |
 | O → O16 | What the F16 conversion step alone changes (added in the pilot; see "Pipeline changes") |
+| O → O | The comparison's own noise floor (added in the pilot; see "Pipeline changes") |
 
 **Reported for each:** mean KL-divergence with its standard error, the 99th and 99.9th percentile and maximum, and
 the share of tokens where both versions pick the same top token.
@@ -147,6 +148,16 @@ isn't measured in this study.
    made from those. Storing the weights as F16 changes **none** of U's 4.63 billion values and 501,026 of O's (0.011%,
    tiny values below F16's normal range, mostly in the per-layer input gates). To measure that step on its own, O → O16
    is added to the KL comparisons.
+3. **A wider storage window for the saved reference.** The first pilot pass (tag `qat-study-v1`) failed the validity
+   check: with O as the reference, PPL(base) recomputed from the saved predictions was 5.59 against 5.82 from the run
+   itself (ratio 0.962; the limit is 2%). E2B is less sure of the 26B model's text than the 26B is (perplexity 5.8
+   against 2.96), so more true tokens fall below llama.cpp's 16-nat window and are stored at its floor. The threshold
+   was **not** loosened. Instead the window was made a setting (`patches/llama-perplexity-kld-window.patch`,
+   `LLAMA_PERPLEXITY_KLD_WINDOW`; the default stays 16) and the study uses **48 nats**, applied to both passes. The
+   16-bit storage step grows from 0.00024 to 0.00073 nats. Checked: with the default window the patched tool
+   reproduces the first pass's result exactly (mean KLD 0.111564 ± 0.001561, same top token 91.635%). Added: O → O, to
+   measure the comparison's own noise floor under the new window. E2B is rerun in full with the final pipeline (tag
+   `qat-study-v2`); the first pass stays in the raw log and is reported as such.
 
 ## Limitations known in advance
 

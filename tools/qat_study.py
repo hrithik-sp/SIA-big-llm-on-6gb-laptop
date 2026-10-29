@@ -32,7 +32,10 @@ MODELS = os.path.join(bench.LLM_HOME, "models")
 STUDY = os.path.join(MODELS, "qat-study")
 CORPUS = os.path.join(bench.LLM_HOME, "data", "qat-study")
 FILES_OUT = os.path.join(pf.ROOT, "results", "qat_study_files.jsonl")
-TAG = "qat-study-v1"
+# v1 = the first E2B pilot pass with llama.cpp's 16-nat window, which failed the PPL(base) check (kept as evidence);
+# v2 = the final pipeline, with a 48-nat window (patches/llama-perplexity-kld-window.patch)
+TAG = "qat-study-v2"
+KLD_WINDOW = 48
 # Converting Gemma 4 needs transformers 5.5+ (tools/requirements-convert-gemma4.txt), kept in its own venv
 CONVERT_PY = os.path.join(bench.LLM_HOME, "venvs", "convert", "Scripts", "python.exe")
 
@@ -179,20 +182,23 @@ def cmd_hashes(a):
 # (reference, [candidates]) in protocol order. Each reference's saved predictions are deleted once its candidates
 # are done (they are ~134 MB per chunk); the logs and results stay.
 # O16 (pipeline check): the F16 copy O4 was made from, to measure what the F16 step alone changes.
-KLD_PLAN = [("O", ["U", "Q", "O4", "O16", "O8"]), ("U", ["Q", "U4"]), ("Q", ["U4"])]
+# O -> O (pipeline check): the noise floor of the comparison itself under the 48-nat window.
+KLD_PLAN = [("O", ["O", "U", "Q", "O4", "O16", "O8"]), ("U", ["Q", "U4"]), ("Q", ["U4"])]
 
 
 def cmd_kld(a):
     import quality
     data = corpus_path(a.size)
-    # mmap for every run: predictions don't depend on the load mode, and speed isn't measured in this study
-    common = ["--data", data, "--parse-special", "-c", "512", "--chunks", "100", "--tag", TAG, "--lm", "auto"]
+    # mmap for every run: predictions don't depend on the load mode, and speed isn't measured in this study.
+    # One VRAM margin for every run (default 1 GiB, llama.cpp's own): it leaves room for the desktop's apps.
+    common = ["--data", data, "--parse-special", "-c", "512", "--chunks", "100", "--tag", TAG, "--lm", "auto",
+              "--fitt", str(a.fitt), "--kld-window", str(KLD_WINDOW)]
     common += ["--allow-ssd"] if a.allow_ssd else []
     for ref, cands in KLD_PLAN:
         if a.only and ref not in a.only.split(","):
             continue
         ref_p = gguf_path(a.size, ref)
-        kld_file = quality.kld_path(ref_p, 512, 100, data)
+        kld_file = quality.kld_path(ref_p, 512, 100, data, KLD_WINDOW)
         if not os.path.exists(kld_file):
             quality.main(["base", ref_p, *common])
         for c in cands:
@@ -253,6 +259,7 @@ def main(argv=None):
     ap.add_argument("size", choices=list(SIZES))
     ap.add_argument("--only", default="", help="kld: only these references (comma list of O, U, Q)")
     ap.add_argument("--cands", default="", help="kld: only these candidates (comma list)")
+    ap.add_argument("--fitt", type=int, default=1024, help="kld: auto-fit VRAM margin in MiB, the same for every run")
     ap.add_argument("--q8", action="store_true", help="quantize: also make O8 and U8 (for the accuracy runs)")
     ap.add_argument("--codes", default="O,U", help="convert: which checkpoints (comma list of O, U)")
     ap.add_argument("--delete-source", action="store_true",

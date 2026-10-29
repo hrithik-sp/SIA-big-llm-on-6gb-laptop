@@ -36,11 +36,13 @@ _STAT = re.compile(r"^\s*([A-Za-z0-9.%()/ ΔÎ\-]+?)\s*:\s*(-?[\d.]+)\s*(?:±|Â
 _FINAL = re.compile(r"Final estimate: PPL = ([\d.]+) \+/- ([\d.]+)")
 
 
-def kld_path(ref, ctx, chunks, data=DATA):
+def kld_path(ref, ctx, chunks, data=DATA, window=None):
     name = os.path.splitext(os.path.basename(ref))[0]
     # wikitext keeps the original names (existing files); other texts get their own
     tag = "" if os.path.abspath(data) == os.path.abspath(DATA) else "-" + os.path.splitext(os.path.basename(data))[0]
-    return os.path.join(KLD_DIR, f"{name}{tag}-c{ctx}-ch{chunks}.kld")
+    # a reference saved with a non-default window must never be compared under another one
+    win = f"-w{window:g}" if window and window != 16 else ""
+    return os.path.join(KLD_DIR, f"{name}{tag}-c{ctx}-ch{chunks}{win}.kld")
 
 
 def parse(text):
@@ -109,13 +111,16 @@ def main(argv=None):
                     help="ik: ik_llama.cpp flags (--no-mmap instead of -lm); placement from mainline fit")
     ap.add_argument("--ram-margin", type=float, default=1.0)
     ap.add_argument("--tag", default="", help="study tag stored with the record (e.g. qat-study-v1)")
+    ap.add_argument("--kld-window", type=float, default=None,
+                    help="nats of log-probability below the top one that the reference keeps (llama.cpp: 16; needs "
+                         "patches/llama-perplexity-kld-window.patch). Use the same value for 'base' and 'kld'")
     a = ap.parse_args(argv)
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
 
     ref = a.model if a.mode == "base" else a.base_model
     if not ref:
         ap.error("kld mode needs --base-model")
-    kld_file = kld_path(ref, a.c, a.chunks, a.data)
+    kld_file = kld_path(ref, a.c, a.chunks, a.data, a.kld_window)
     if a.mode == "kld" and not os.path.exists(kld_file):
         ap.error(f"reference logits not found: {kld_file} (run 'base' first)")
     # The reference does not fit in RAM: mmap lets it stream from SSD instead of pagefile thrash.
@@ -138,8 +143,11 @@ def main(argv=None):
     print(subprocess.list2cmdline(cmd))
 
     t0 = time.time()
+    env_extra = {"LLAMA_PERPLEXITY_PARSE_SPECIAL": "1"} if a.parse_special else {}
+    if a.kld_window:
+        env_extra["LLAMA_PERPLEXITY_KLD_WINDOW"] = str(a.kld_window)
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env=bench.llama_env({"LLAMA_PERPLEXITY_PARSE_SPECIAL": "1"} if a.parse_special else None))
+                       env=bench.llama_env(env_extra))
     dt = time.time() - t0
     text = r.stdout + "\n" + r.stderr
     log = os.path.join(KLD_DIR, os.path.basename(kld_file) + f".{a.mode}.{a.engine}.{os.path.basename(a.model)}.log")
@@ -151,7 +159,7 @@ def main(argv=None):
 
     stats = parse(text)
     rec = {"time": datetime.datetime.now().isoformat(timespec="seconds"), "tag": a.tag, "mode": a.mode, "engine": a.engine,
-           "extra": a.extra, "parse_special": a.parse_special,
+           "extra": a.extra, "parse_special": a.parse_special, "kld_window": a.kld_window or 16,
            "model": a.model, "reference": ref, "data": a.data, "ctx": a.c, "chunks": a.chunks,
            "seconds": round(dt), "streamed_from_ssd": ssd, "placement": {"ngl": ngl, "ot": ot},
            "llama_cpp_memory_mib": meas, "kld_file": kld_file, "log": log, "cmd": cmd, "stats": stats}
