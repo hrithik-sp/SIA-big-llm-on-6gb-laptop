@@ -9,10 +9,14 @@ markers are real special tokens. This avoids the wikitext problem for instruct m
 storage window of --kl-divergence-base is respected.
 
   python tools/chat_corpus.py --tag gemma4-gsm8k-nothink-v1 --label Q8_0 --gguf REF.gguf --out FILE.txt
+  # QAT study (docs/QAT_STUDY_PROTOCOL.md): several tags, fixed shuffled order, a template file
+  python tools/chat_corpus.py --tag gemma4-mmlupro-v1,gemma4-mmlupro-v1-rerun4k,gemma4-mmlupro-v2,gemma4-gsm8k-nothink-v1 \\
+      --label Q8_0 --shuffle-seed 0 --template chat_template.jinja --out FILE.txt
 """
 import argparse
 import json
 import os
+import random
 import sys
 
 import jinja2
@@ -32,24 +36,45 @@ def render_prompt(template, user_content):
                                             add_generation_prompt=True, enable_thinking=False)
 
 
+def load_answers(tags, label):
+    """The label's answers under these tags (comma list); a later tag replaces an earlier answer to the same
+    question, as in task_eval --report. Keyed by (bench, question id)."""
+    with open(task_eval.OUT, encoding="utf-8") as f:
+        rows = list(map(json.loads, f))
+    by = {}
+    for tag in tags.split(","):
+        for r in rows:
+            if r["tag"] == tag and r["label"] == label:
+                by[(r.get("bench", "gsm8k"), r["idx"])] = r
+    return by
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--tag", required=True)
+    ap.add_argument("--tag", required=True, help="comma list; later tags replace earlier answers to the same question")
     ap.add_argument("--label", required=True, help="reference model label in results/tasks.jsonl")
-    ap.add_argument("--gguf", required=True, help="GGUF whose chat template to use")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--gguf", help="GGUF whose chat template to use")
+    src.add_argument("--template", help="chat template file (.jinja) to use instead of a GGUF's")
+    ap.add_argument("--per-category", type=int, default=15, help="MMLU-Pro sample the answers come from")
+    ap.add_argument("--shuffle-seed", type=int, help="fixed pseudo-random order (default: bench, then question id)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
 
-    template = pf.read_gguf(a.gguf)[0]["tokenizer.chat_template"]
-    with open(task_eval.OUT, encoding="utf-8") as f:
-        rows = [r for r in map(json.loads, f) if r["tag"] == a.tag and r["label"] == a.label]
-    bench = rows[0].get("bench", "gsm8k") if rows else "gsm8k"
-    prompts = {pid: prompt for pid, prompt, _ in task_eval.load_problems(bench, 10**6, 5, 0)}
-    parts = []
-    for r in sorted(rows, key=lambda r: r["idx"]):
-        if r["finish"] != "stop" or r["idx"] not in prompts:
-            continue  # only complete answers
-        parts.append(render_prompt(template, prompts[r["idx"]]) + r["content"] + END_OF_TURN)
+    if a.gguf:
+        template = pf.read_gguf(a.gguf)[0]["tokenizer.chat_template"]
+    else:
+        with open(a.template, encoding="utf-8") as f:
+            template = f.read()
+    answers = load_answers(a.tag, a.label)
+    prompts = {}
+    for bench in sorted({b for b, _ in answers}):
+        prompts.update({(bench, pid): prompt
+                        for pid, prompt, _ in task_eval.load_problems(bench, 10**6, a.per_category, 0)})
+    keys = sorted(k for k, r in answers.items() if r["finish"] == "stop" and k in prompts)  # only complete answers
+    if a.shuffle_seed is not None:
+        random.Random(a.shuffle_seed).shuffle(keys)
+    parts = [render_prompt(template, prompts[k]) + answers[k]["content"] + END_OF_TURN for k in keys]
     with open(a.out, "w", encoding="utf-8", newline="\n") as f:
         f.write("".join(parts))
     print(f"{len(parts)} conversations, {sum(map(len, parts))} chars -> {a.out}")

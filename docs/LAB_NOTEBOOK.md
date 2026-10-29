@@ -1963,6 +1963,7 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | 9 | Publication: summary, limitations, reproduction guide, portable paths, pinned requirements, file hashes | **Done:** text, all 11 file hashes match Hugging Face, patches apply cleanly. Published on GitHub (MIT licence) |
 | 7 | **Daily-use RAM-pressure test**: `tools/ram_hold.py` holds 0 / 2 / 4 / 6 GiB and touches every page every 5 s, like active tabs; an untouched allocation could be trimmed to the pagefile and flatter the result. Floor: never below 2 GiB available. `tools/ram_pressure.ps1` then measures decode of gpt-oss-20b (mmap, and `-lm none` where preflight allows) and Gemma 4 QAT (mmap). Output: "with X GB used by other apps, expect Y tok/s" | **Done** (finding 40) |
 | — | **Optional extensions, after the core:** gpt-oss-120b at native precision from SSD; expert-prefetch contribution to llama.cpp; ik divergence report upstream | Deferred |
+| 10 | **QAT fidelity study:** for each Gemma 4 size, separate QAT's retraining drift from its 4-bit rounding loss, using Google's original, QAT-unquantized and QAT Q4_0 releases, with a post-hoc Q4_0 control. Protocol fixed in advance: [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md) | **Protocol written; E2B pilot started** (no results yet) |
 
 ## Tools
 
