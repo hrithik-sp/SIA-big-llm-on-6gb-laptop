@@ -1883,6 +1883,49 @@ Goal: Sprout separate from Edge, quick and smooth.
       second model pass: 2–5 s instead of ~10 s. A request with a question or another task in it still goes to the
       model. The rest is the RAM shortfall (finding 68): closing heavy apps while using Sia helps most.
 
+70. **QAT study, E2B pilot: most of the 4-bit release's difference is retraining, and QAT's rounding is 14×
+    gentler than ordinary rounding** (tag `qat-study-v2`; method fixed in advance in
+    [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md); `python tools/qat_study.py report E2B`).
+    - **Setup:** Gemma 4 E2B in five versions: the original (O), Google's QAT model before rounding (U), Google's
+      Q4_0 release (Q), and the original and QAT model rounded to Q4_0 here in exactly Q's per-tensor formats (O4,
+      U4). Test text: the first 100 chunks of 512 tokens of the 26B model's own answers, rendered with E2B's chat
+      template; the reference keeps a 48-nat window. Every comparison passed the validity check (PPL(base) ratio
+      1.00000–1.00001).
+
+      | Comparison | What it measures | Mean KLD | 99.9% KLD | Max | Same top token |
+      |---|---|---|---|---|---|
+      | O → O | noise floor (same file, run twice) | 0.000000 | 0.0001 | 0.000 | 100.00% |
+      | Q → U4 | noise floor (byte-identical weights, two files) | 0.000000 | 0.0001 | 0.000 | 99.996% |
+      | O → O16 | the F16 conversion step alone | 0.00016 ± 0.00001 | 0.009 | 0.10 | 99.66% |
+      | O → O8 | the Q8_0 stand-in for the accuracy runs | 0.0029 ± 0.0001 | 0.18 | 0.82 | 98.50% |
+      | **U → Q** | **QAT's rounding loss** | **0.0219 ± 0.0003** | 0.63 | 1.27 | 95.04% |
+      | **O → U** | **QAT's retraining drift** | **0.1115 ± 0.0016** | 2.59 | 7.60 | 91.64% |
+      | O → Q | the release against the original | 0.1327 ± 0.0018 | 3.11 | 8.97 | 90.60% |
+      | **O → O4** | **ordinary Q4_0 rounding, same format (control)** | **0.3001 ± 0.0056** | 8.97 | 37.07 | 86.31% |
+
+    - **H1 (rounding) holds for E2B:** rounding the QAT model to 4 bits costs about 14 times less than rounding the
+      original the ordinary way (0.022 against 0.300). Google's release ends up 2.3 times closer to the original than
+      the original rounded to 4 bits, and its worst token 4 times closer (maximum 8.97 against 37.1).
+    - **H2 (where the distance comes from) holds for E2B:** retraining drift (0.112) is 5 times the rounding loss
+      (0.022), and the two add up almost exactly to the release's total (0.134 against 0.133).
+    - **The same pattern as the 26B model** (finding 31): QAT shifts predictions broadly (median KLD 0.021) but has
+      small tails; ordinary rounding leaves most tokens almost untouched (median 0.004) and breaks a few badly.
+    - **Google's Q4_0 file is a plain Q4_0 rounding of their published QAT checkpoint, byte for byte** (541 of 541
+      tensors identical to U4; only descriptive metadata differs). Storing U's weights as F16 changes none of its 4.63
+      billion values, while 501,026 of the original's (0.011%) change: the QAT weights sit on an F16-exact grid.
+    - **The drift has a direction.** The QAT versions find the 26B model's answers far more predictable than the
+      original E2B does: perplexity 3.31 (U) and 3.36 (Q) against 5.82 (O), and 6.64 for ordinary Q4_0 rounding.
+      QAT moved E2B towards text the larger model writes. Why is not known: Google hasn't published the QAT step's
+      training data. Whether that makes it better or worse is for the accuracy runs to show.
+    - **Noise floor:** the same file run twice gives KLD 0 exactly; byte-identical weights in two files flipped one
+      near-tie among 25,600 tokens; the F16 step alone gives 0.00016.
+    - **Not shown yet:** whether any version answers better (MMLU-Pro, 1,400 questions, next), and whether the
+      pattern holds at the other four sizes.
+    - **A first pass failed its validity check** (tag `qat-study-v1`, kept in the raw log): with llama.cpp's 16-nat
+      window, PPL(base) read 5.59 against 5.82 (ratio 0.962, limit 2%). The threshold was kept and the window widened
+      (protocol, "Pipeline changes", item 3). With the default window the patched tool reproduces that first pass
+      exactly (O → U: 0.111564 ± 0.001561); with 48 nats the same comparison gives 0.111537 ± 0.001562.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
@@ -1963,7 +2006,7 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | 9 | Publication: summary, limitations, reproduction guide, portable paths, pinned requirements, file hashes | **Done:** text, all 11 file hashes match Hugging Face, patches apply cleanly. Published on GitHub (MIT licence) |
 | 7 | **Daily-use RAM-pressure test**: `tools/ram_hold.py` holds 0 / 2 / 4 / 6 GiB and touches every page every 5 s, like active tabs; an untouched allocation could be trimmed to the pagefile and flatter the result. Floor: never below 2 GiB available. `tools/ram_pressure.ps1` then measures decode of gpt-oss-20b (mmap, and `-lm none` where preflight allows) and Gemma 4 QAT (mmap). Output: "with X GB used by other apps, expect Y tok/s" | **Done** (finding 40) |
 | — | **Optional extensions, after the core:** gpt-oss-120b at native precision from SSD; expert-prefetch contribution to llama.cpp; ik divergence report upstream | Deferred |
-| 10 | **QAT fidelity study:** for each Gemma 4 size, separate QAT's retraining drift from its 4-bit rounding loss, using Google's original, QAT-unquantized and QAT Q4_0 releases, with a post-hoc Q4_0 control. Protocol fixed in advance: [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md) | **Protocol written; E2B pilot started** (no results yet) |
+| 10 | **QAT fidelity study:** for each Gemma 4 size, separate QAT's retraining drift from its 4-bit rounding loss, using Google's original, QAT-unquantized and QAT Q4_0 releases, with a post-hoc Q4_0 control. Protocol fixed in advance: [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md) | **E2B pilot done** (finding 70: KL comparisons). Next: E2B accuracy, then E4B and 12B |
 
 ## Tools
 
@@ -1983,7 +2026,7 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/task_eval.py` | GSM8K (OpenAI grade-school-math `3101c7d`, test.jsonl sha256 `3730d312…`) accuracy and answer flips vs a reference model, via `llama-server` at temperature 0 → `results/tasks.jsonl` |
 | `tools/build_llama.ps1` | CUDA sm_86 + AVX-512 (VNNI/VBMI) build; parallel jobs sized to free RAM |
 | `tools/fetch_model.ps1` | Hugging Face download (models or datasets) with resume and SHA-256 verification |
-| `tests/` | 99 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, and Sia (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
+| `tests/` | 106 tests: preflight on synthetic GGUFs, KLD parser, answer extraction and the exact sign test, Windows argument splitting, the QAT study's format overrides, and Sia (request building, emoji filter, API key on every server, settings sanitising, read-only tools and the secret-path guard). Run with `python -m unittest discover tests -v` |
 | `tools/make_figures.py` | The charts in README and REPORT (light and dark SVG), from the measured numbers, each tagged with its finding |
 | `tools/sia_behaviour_check.py` | Chat behaviour: persona, time and place, file search, games, a reasoning sum, reply speed (finding 56) |
 | `tools/sia_actions_check.py` | Laptop actions with the real model, verified against the real state and restored; run only with `--visible` and the owner's OK (finding 58) |
@@ -2044,7 +2087,7 @@ git apply <this repo>\patches\llama-bench-moe-cache-mib.patch       # llama-benc
 git apply <this repo>\patches\llama-perplexity-parse-special.patch  # chat-corpus KLD (finding 30)
 cd <this repo>
 powershell -ExecutionPolicy Bypass -File tools\build_llama.ps1       # CUDA sm_86, AVX-512 VNNI/VBMI, BF16 off
-python -m unittest discover tests                                    # 99 tests
+python -m unittest discover tests                                    # 106 tests
 ```
 
 **3. Models and data.** `fetch_model.ps1` checks every file against the SHA-256 that
