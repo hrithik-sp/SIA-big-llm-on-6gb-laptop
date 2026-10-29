@@ -108,6 +108,7 @@ def main(argv=None):
     ap.add_argument("--engine", default="llama", choices=["llama", "ik"],
                     help="ik: ik_llama.cpp flags (--no-mmap instead of -lm); placement from mainline fit")
     ap.add_argument("--ram-margin", type=float, default=1.0)
+    ap.add_argument("--tag", default="", help="study tag stored with the record (e.g. qat-study-v1)")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)
 
@@ -149,7 +150,7 @@ def main(argv=None):
         raise SystemExit(f"llama-perplexity failed ({r.returncode}); log: {log}")
 
     stats = parse(text)
-    rec = {"time": datetime.datetime.now().isoformat(timespec="seconds"), "mode": a.mode, "engine": a.engine,
+    rec = {"time": datetime.datetime.now().isoformat(timespec="seconds"), "tag": a.tag, "mode": a.mode, "engine": a.engine,
            "extra": a.extra, "parse_special": a.parse_special,
            "model": a.model, "reference": ref, "data": a.data, "ctx": a.c, "chunks": a.chunks,
            "seconds": round(dt), "streamed_from_ssd": ssd, "placement": {"ngl": ngl, "ot": ot},

@@ -128,8 +128,9 @@ the share of tokens where both versions pick the same top token.
 4. **Accuracy for 12B and 31B** only if a timing check, run before any of their accuracy data, projects at most
    24 hours per version on this laptop. Dense models read every weight for each token, so this may rule them out.
 
-Every run goes through the project's preflight check. A **reference** run whose weights exceed free RAM may stream
-from the SSD (`--allow-ssd`): predictions are unaffected, only speed suffers, and speed isn't measured in this study.
+Every run goes through the project's preflight check. KL runs load models memory-mapped, and one whose weights
+exceed free RAM may stream from the SSD (`--allow-ssd`): predictions are unaffected, only speed suffers, and speed
+isn't measured in this study.
 
 ## Limitations known in advance
 
