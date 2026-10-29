@@ -33,6 +33,8 @@ STUDY = os.path.join(MODELS, "qat-study")
 CORPUS = os.path.join(bench.LLM_HOME, "data", "qat-study")
 FILES_OUT = os.path.join(pf.ROOT, "results", "qat_study_files.jsonl")
 TAG = "qat-study-v1"
+# Converting Gemma 4 needs transformers 5.5+ (tools/requirements-convert-gemma4.txt), kept in its own venv
+CONVERT_PY = os.path.join(bench.LLM_HOME, "venvs", "convert", "Scripts", "python.exe")
 
 # Pinned revisions (Hugging Face commit SHAs). template: which chat-template family the size uses (the protocol's
 # two renderings of the test text).
@@ -50,7 +52,8 @@ def gguf_path(size, code):
     if code == "Q":
         repo, _, name = SIZES[size]["Q"]
         return os.path.join(MODELS, repo.replace("/", "__"), name)
-    kind = {"O": "bf16", "U": "bf16", "O4": "q4_0", "U4": "q4_0", "O8": "q8_0", "U8": "q8_0"}[code]
+    kind = {"O": "bf16", "U": "bf16", "O16": "f16", "U16": "f16", "O4": "q4_0", "U4": "q4_0",
+            "O8": "q8_0", "U8": "q8_0"}[code]
     return os.path.join(STUDY, size, f"gemma-4-{size}-{code}-{kind}.gguf")
 
 
@@ -103,31 +106,48 @@ def sha256(path, chunk=16 * 2 ** 20):
 
 
 def cmd_convert(a):
-    for code in ("O", "U"):
+    """Each checkpoint becomes a BF16 GGUF (the reference, O or U) and an F16 GGUF (O16 or U16, the input for the
+    4-bit copies). Google's Q4_0 files store per_layer_model_proj in F16, a tensor llama-quantize never converts
+    (src/llama-quant.cpp, tensor_allows_quantization), so only an F16 conversion reproduces their formats."""
+    if not os.path.exists(CONVERT_PY):
+        raise SystemExit(f"missing {CONVERT_PY}: create it from tools/requirements-convert-gemma4.txt")
+    for code in a.codes.split(","):
         repo, rev = SIZES[a.size][code]
-        src, dst = os.path.join(MODELS, repo.replace("/", "__")), gguf_path(a.size, code)
-        if os.path.exists(dst):
-            print(f"exists: {dst}")
-            continue
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        run([sys.executable, os.path.join(LLAMA, "convert_hf_to_gguf.py"), src, "--outtype", "bf16",
-             "--outfile", dst + ".part"], dst + ".convert.log")
-        os.replace(dst + ".part", dst)  # a conversion cut short never looks finished
+        src = os.path.join(MODELS, repo.replace("/", "__"))
+        for out_code, outtype in ((code, "bf16"), (code + "16", "f16")):
+            dst = gguf_path(a.size, out_code)
+            if os.path.exists(dst):
+                print(f"exists: {dst}")
+                continue
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            run([CONVERT_PY, os.path.join(LLAMA, "convert_hf_to_gguf.py"), src, "--outtype", outtype,
+                 "--outfile", dst + ".part"], dst + ".convert.log")
+            os.replace(dst + ".part", dst)  # a conversion cut short never looks finished
+        if a.delete_source:  # re-downloadable at the pinned revision, SHA-256 verified by fetch_model.ps1
+            for f in os.listdir(src):
+                if f.endswith(".safetensors"):
+                    os.remove(os.path.join(src, f))
+                    print(f"deleted {os.path.join(src, f)}")
 
 
 def cmd_quantize(a):
+    """O4 and U4 are made from the F16 conversions (see cmd_convert), with every tensor forced to Q's format."""
     q_types = tensor_types(gguf_path(a.size, "Q"))
     tt = os.path.join(STUDY, a.size, "q-tensor-types.txt")
     with open(tt, "w", encoding="utf-8", newline="\n") as f:
         f.write("\n".join(override_lines(q_types)) + "\n")
     exe = os.path.join(LLAMA, "build-cuda", "bin", "llama-quantize.exe")
-    for src, dst, ftype, extra in (("O", "O4", "Q4_0", ["--tensor-type-file", tt]),
-                                   ("U", "U4", "Q4_0", ["--tensor-type-file", tt]),
-                                   ("O", "O8", "Q8_0", []), ("U", "U8", "Q8_0", [])):
+    steps = [("O16", "O4", "Q4_0", ["--tensor-type-file", tt]), ("U16", "U4", "Q4_0", ["--tensor-type-file", tt])]
+    if a.q8:
+        steps += [("O", "O8", "Q8_0", []), ("U", "U8", "Q8_0", [])]
+    for src, dst, ftype, extra in steps:
         out = gguf_path(a.size, dst)
         if not os.path.exists(out):
             run([exe, *extra, gguf_path(a.size, src), out + ".part", ftype], out + ".quantize.log")
             os.replace(out + ".part", out)
+        if dst == "U4" and a.drop_u16 and os.path.exists(gguf_path(a.size, "U16")):
+            os.remove(gguf_path(a.size, "U16"))  # U's BF16 values are all exact in F16, so U16 adds nothing
+            print("deleted U16 (U is exactly representable in F16)")
         if ftype == "Q4_0":
             ours = tensor_types(out)
             bad = type_mismatches(ours, q_types)
@@ -144,7 +164,7 @@ def cmd_quantize(a):
 
 def cmd_hashes(a):
     with open(FILES_OUT, "a", encoding="utf-8") as f:
-        for code in ("O", "U", "Q", "O4", "U4", "O8", "U8"):
+        for code in ("O", "U", "Q", "O16", "U16", "O4", "U4", "O8", "U8"):
             p = gguf_path(a.size, code)
             if not os.path.exists(p):
                 print(f"MISSING {p}")
@@ -158,7 +178,8 @@ def cmd_hashes(a):
 
 # (reference, [candidates]) in protocol order. Each reference's saved predictions are deleted once its candidates
 # are done (they are ~134 MB per chunk); the logs and results stay.
-KLD_PLAN = [("O", ["U", "Q", "O4", "O8"]), ("U", ["Q", "U4"]), ("Q", ["U4"])]
+# O16 (pipeline check): the F16 copy O4 was made from, to measure what the F16 step alone changes.
+KLD_PLAN = [("O", ["U", "Q", "O4", "O16", "O8"]), ("U", ["Q", "U4"]), ("Q", ["U4"])]
 
 
 def cmd_kld(a):
@@ -175,6 +196,12 @@ def cmd_kld(a):
         if not os.path.exists(kld_file):
             quality.main(["base", ref_p, *common])
         for c in cands:
+            if a.cands and c not in a.cands.split(","):
+                continue
+            if not os.path.exists(gguf_path(a.size, c)):
+                print(f"SKIP {ref} -> {c}: {gguf_path(a.size, c)} doesn't exist yet (rerun with --only {ref} "
+                      f"--cands {c} --keep-logits)")
+                continue
             quality.main(["kld", gguf_path(a.size, c), "--base-model", ref_p, *common])
         if not a.keep_logits:
             os.remove(kld_file)
@@ -225,6 +252,12 @@ def main(argv=None):
     ap.add_argument("command", choices=["convert", "quantize", "hashes", "kld", "compare-q", "report"])
     ap.add_argument("size", choices=list(SIZES))
     ap.add_argument("--only", default="", help="kld: only these references (comma list of O, U, Q)")
+    ap.add_argument("--cands", default="", help="kld: only these candidates (comma list)")
+    ap.add_argument("--q8", action="store_true", help="quantize: also make O8 and U8 (for the accuracy runs)")
+    ap.add_argument("--codes", default="O,U", help="convert: which checkpoints (comma list of O, U)")
+    ap.add_argument("--delete-source", action="store_true",
+                    help="convert: delete each downloaded checkpoint once its GGUFs exist (saves disk)")
+    ap.add_argument("--drop-u16", action="store_true", help="quantize: delete U16 once U4 exists (saves disk)")
     ap.add_argument("--keep-logits", action="store_true", help="kld: keep each reference's saved predictions")
     ap.add_argument("--allow-ssd", action="store_true",
                     help="kld: let a model that exceeds free RAM stream from the SSD (values unaffected; the "

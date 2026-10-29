@@ -1,0 +1,15 @@
+# Isolated environment for converting Gemma 4 checkpoints with llama.cpp 0a1ef309c (tools/qat_study.py convert).
+# llama.cpp's own requirements pin transformers 4.57.6 at this commit, which can't read Gemma 4's tokenizer
+# (AttributeError on extra_special_tokens). llama.cpp #21617 (commit c8ac02fa1) set transformers 5.5.1 because it
+# "is required to be able to convert Gemma4 models"; a later commit lowered it again to fix CI in an unrelated PR.
+#   python -m venv %LLM_HOME%\venvs\convert
+#   %LLM_HOME%\venvs\convert\Scripts\python -m pip install -r tools\requirements-convert-gemma4.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+numpy==2.2.6
+sentencepiece==0.2.2
+protobuf==4.25.9
+transformers==5.5.1
+huggingface_hub==1.33.0
+safetensors==0.8.0
+tokenizers==0.22.2

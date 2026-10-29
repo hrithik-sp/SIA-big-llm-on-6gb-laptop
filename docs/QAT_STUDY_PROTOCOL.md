@@ -27,8 +27,8 @@ possible to measure the two effects separately.
 | O | Original instruct model, BF16 | `google/gemma-4-<size>-it`, converted to GGUF BF16 |
 | U | QAT model before rounding, BF16 | `google/gemma-4-<size>-it-qat-q4_0-unquantized`, converted to GGUF BF16 |
 | Q | Google's 4-bit QAT release | `google/gemma-4-<size>-it-qat-q4_0-gguf` (the file as published) |
-| O4 | The original rounded to Q4_0 without QAT (control) | `llama-quantize O Q4_0` |
-| U4 | The QAT model rounded to Q4_0 here | `llama-quantize U Q4_0` |
+| O4 | The original rounded to Q4_0 without QAT (control) | `llama-quantize O16 Q4_0` (O16: the F16 conversion, see "Pipeline changes") |
+| U4 | The QAT model rounded to Q4_0 here | `llama-quantize U16 Q4_0` |
 | O8, U8 | Q8_0 copies, for the accuracy runs | `llama-quantize O/U Q8_0` |
 
 All repositories are pinned to a revision, every file's SHA-256 is recorded, and conversion and quantization use
@@ -76,6 +76,7 @@ answers are used for every size.
 | O → O4 | Rounding loss without QAT (control, same 4-bit format) |
 | U → U4, Q → U4, and a byte comparison of U4's and Q's tensor data | Whether Google's file is a plain Q4_0 rounding of U (exploratory) |
 | O → O8 | The error of the Q8_0 stand-in used for accuracy |
+| O → O16 | What the F16 conversion step alone changes (added in the pilot; see "Pipeline changes") |
 
 **Reported for each:** mean KL-divergence with its standard error, the 99th and 99.9th percentile and maximum, and
 the share of tokens where both versions pick the same top token.
@@ -131,6 +132,21 @@ the share of tokens where both versions pick the same top token.
 Every run goes through the project's preflight check. KL runs load models memory-mapped, and one whose weights
 exceed free RAM may stream from the SSD (`--allow-ssd`): predictions are unaffected, only speed suffers, and speed
 isn't measured in this study.
+
+## Pipeline changes found in the E2B pilot (recorded before any KL result)
+
+1. **Converter environment.** llama.cpp's requirements at `0a1ef309c` pin transformers 4.57.6, which can't read
+   Gemma 4's tokenizer configuration. llama.cpp #21617 had set transformers 5.5.1 because it "is required to be
+   able to convert Gemma4 models"; a later commit lowered the pin to fix CI in an unrelated pull request. Conversion
+   therefore runs in its own environment with transformers 5.5.1 (`tools/requirements-convert-gemma4.txt`). Checked:
+   the converted files' tokenizer metadata (13 fields) and architecture settings (20 fields) are identical to
+   Google's own Q4_0 GGUF.
+2. **An F16 conversion as the input for O4 and U4.** Google's Q4_0 files store `per_layer_model_proj` in F16, and
+   llama-quantize never converts that tensor (`tensor_allows_quantization`), so a BF16 input left it in BF16 and the
+   format check failed. Each checkpoint is therefore also converted with `--outtype f16` (O16, U16), and O4 and U4 are
+   made from those. Storing the weights as F16 changes **none** of U's 4.63 billion values and 501,026 of O's (0.011%,
+   tiny values below F16's normal range, mostly in the per-layer input gates). To measure that step on its own, O → O16
+   is added to the KL comparisons.
 
 ## Limitations known in advance
 
