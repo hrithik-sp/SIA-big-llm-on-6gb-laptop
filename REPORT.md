@@ -584,6 +584,7 @@ Full commands: lab notebook, "Recommended settings".
 | 67 | "Yes?" came late and over the request; requests after it vanished | "Yes?" was made on demand; the follow-up filter dropped real lines | "Yes?" is ready at once and yields to speech; the filter was removed | 69 |
 | 68 | "My name is Friday Gaspi" (misheard): "I've updated your name" | The model takes a stated name at face value | A note beside the message keeps the Settings name: 4/4 | 69 |
 | 69 | "Turn the volume up" took ~10 s | A second model pass just to say it was done | A settings change that worked is answered from its own result: 2–5 s | 69 |
+| 70 | Sia read the first paragraph, then went quiet for ~25 s | A blank line between paragraphs stopped the sentence splitter, so the rest waited for the whole reply and was spoken as one piece | Empty pieces are skipped and long sentences spoken in parts: no silence after the first word | 71 |
 
 ---
 

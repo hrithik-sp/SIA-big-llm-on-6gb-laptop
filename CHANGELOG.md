@@ -1,5 +1,13 @@
 # Changelog
 
+## Voice: no more long pauses in spoken replies
+
+- **Reads straight through:** a reply with several paragraphs no longer goes quiet after the first one. A blank
+  line between paragraphs used to hold back the rest of the reply until it was fully written, then the remainder
+  was spoken after ~25 s of silence; now it plays without gaps.
+- **Long sentences in parts:** a very long sentence is spoken in breaths (at a comma, or after about 25 words), so
+  no single piece keeps you waiting while its audio is made.
+
 ## Documentation: references and credits
 
 - **Full references:** REPORT.md now lists the 45 works this project builds on, with every author and the

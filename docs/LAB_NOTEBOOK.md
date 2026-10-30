@@ -1926,6 +1926,25 @@ Goal: Sprout separate from Edge, quick and smooth.
       (protocol, "Pipeline changes", item 3). With the default window the patched tool reproduces that first pass
       exactly (O → U: 0.111564 ± 0.001561); with 48 nats the same comparison gives 0.111537 ± 0.001562.
 
+71. **Voice: a paragraph break silenced the rest of a spoken reply.** Reported from use: Sia read the first
+    paragraph, went quiet for a long time, then carried on where it stopped. Reproduced through the real page
+    (`tools/sia_ui_voice_check.py`: headless Edge, fake microphone, Gemma 4 QAT, Kokoro) with a 100 ms sampler of the
+    page's speech queue, asking for a short story.
+    - **Cause:** the page cuts a streaming reply into sentences for the voice and treats a line break as a sentence
+      end. After the first paragraph the waiting text began with the blank line, an empty "sentence"; the loop
+      stopped there instead of skipping it and found the same line on every later update. Nothing more was spoken
+      until the reply was complete, and then the whole remainder went to the voice as one piece.
+    - **Before:** 24.5 s of silence with 1,400 characters waiting, then one 270-word piece (synthesis runs at 0.28×
+      real time on this CPU with nothing else running, so a piece that long takes ~25 s to make).
+    - **Fix (`app/static/app.js`):** pieces with no words are skipped; the end of a reply is split sentence by
+      sentence like the rest; a sentence over 25 words is spoken in parts (at a comma or dash after 10+ words, else
+      after 25 words). Replaying the failing reply through the new code: 28 pieces, the longest 25 words, all 327
+      words kept.
+    - **After:** the same request, and five sleep tips separated by blank lines: no silence of 0.3 s or more after
+      the first word; each piece starts as the one before ends. The standard voice check passes (its default
+      question now includes "Hey Sia": since wake mode became the default, a question without it is rightly ignored,
+      so the old default could no longer pass), and a background line nearby still isn't answered.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |

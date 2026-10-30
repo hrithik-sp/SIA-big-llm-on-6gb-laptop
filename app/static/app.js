@@ -778,10 +778,22 @@ function voiceFeed(delta) {
       // would pause; a long run-on sentence is cut at 10 words; a short sentence is never split
       const join = words.length > 7 && V.pending.match(/^((?:\S+\s+){4,}?)(?=(?:if|and|but|so|because|which|when|while|where|then|or|though)\s)/i);
       m = nextSentence(V.pending) || clause || join || (words.length > 10 ? [null, words.slice(0, 7).join(" ") + " "] : null);
-    } else m = nextSentence(V.pending);
-    if (!m || m[1].trim().length < 2) break;
+    } else m = nextSentence(V.pending) || longPiece(V.pending);
+    if (!m) break;
+    // a paragraph break is a "sentence" with no words: skip it (stopping there once held back the rest of a
+    // reply until it was fully written, then spoke it as one 270-word piece after ~25 s of silence)
+    if (!/\w/.test(m[1])) { V.pending = V.pending.slice(m[1].length); continue; }
     queueSpeech(m[1]); V.pending = V.pending.slice(m[1].length); V.firstOut = true;
   }
+}
+// a long sentence is spoken in parts, as a speaker would breathe: at a comma or dash after 10+ words, or after 25
+// words once more follow, so no single piece takes long to make while the listener waits
+function longPiece(text) {
+  if (text.trim().split(/\s+/).length <= 25) return null;
+  const clause = text.match(/^\s*(?:\S+\s+){9,}?\S+[,;–—](?=\s)/);
+  if (clause && clause[0].split(/\s+/).length <= 30) return [null, clause[0]];
+  const cut = text.match(/^\s*(?:\S+\s+){25}/);
+  return cut ? [null, cut[0]] : null;
 }
 // while a tool runs, a person would say "one sec" instead of going silent (once per reply, before any answer)
 const FILLERS = ["One sec.", "Let me check.", "Okay, one moment.", "Sure, one second."];
@@ -790,7 +802,10 @@ function voiceFiller(am, text) {
   am.filled = true;
   queueSpeech(text || FILLERS[Math.floor(Math.random() * FILLERS.length)]);
 }
-function voiceFlush() { if (V.on && V.pending.trim()) queueSpeech(V.pending); V.pending = ""; }
+function voiceFlush() {  // the reply is complete: its last text goes out sentence by sentence too, not as one piece
+  if (V.on) { V.pending += "\n"; voiceFeed(""); if (/\w/.test(V.pending)) queueSpeech(V.pending); }
+  V.pending = "";
+}
 function queueSpeech(text) {
   text = text.replace(/```[\s\S]*?```/g, " ").trim();
   if (!/\w/.test(text)) return;

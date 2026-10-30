@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "app"))
 import voice  # noqa: E402
 
 EDGE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-QUESTIONS = [q for q in sys.argv[1:] if not q.startswith("--")] or ["Who created you?"]
+QUESTIONS = [q for q in sys.argv[1:] if not q.startswith("--")] or ["Hey Sia, who created you?"]  # wake mode (the default) needs the wake phrase
 # lines starting with "~" are someone else talking nearby (another voice): they must never become messages
 REQUESTS = [q for q in QUESTIONS if not q.startswith("~")]
 QUESTION = QUESTIONS[0]
@@ -129,12 +129,13 @@ def main():
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(4)
         out = subprocess.run(["node", str(tmp / "driver.mjs"), "9333", str(len(REQUESTS))], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace",  # Node writes UTF-8; replies have curly quotes
                              timeout=200 + 60 * len(QUESTIONS))
         print(out.stderr.strip()[-1500:])
         print(out.stdout.strip())
         r = json.loads(out.stdout.strip().splitlines()[-1]) if out.stdout.strip() else {}
         msgs = r.get("state", {}).get("messages", [])
-        default = QUESTION == "Who created you?"
+        default = QUESTION == "Hey Sia, who created you?"
         users = [m["text"] for m in msgs if m["role"] == "user"]
         strays = [u for u in users if any(q.startswith("~") and q[1:12].lower() in u.lower() for q in QUESTIONS)]
         print("user messages:", users, "| background lines that became messages:", strays)

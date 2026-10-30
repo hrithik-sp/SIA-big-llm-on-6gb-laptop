@@ -133,7 +133,7 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (70 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (71 findings) |
 | [`docs/SIA.md`](docs/SIA.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
