@@ -1,0 +1,10 @@
+{"time": "2026-10-29T21:13:04", "tag": "qat-study-acc-v1", "label": "E2B-O8", "event": "start", "attempt": 1, "answered": 0, "total": 1400, "model": "C:\\Users\\sphri\\llm\\models\\qat-study\\E2B\\gemma-4-E2B-O8-q8_0.gguf"}
+{"time": "2026-10-30T00:43:24", "tag": "qat-study-acc-v1", "label": "E2B-O8", "event": "paused", "answered": 782, "total": 1400, "reason": "stopped at the owner's request; resume with: python tools/qat_study.py accuracy E2B"}
+{"time": "2026-10-30T21:30:57", "tag": "qat-study-acc-v1", "label": "E2B-O8", "event": "start", "attempt": 1, "answered": 782, "total": 1400, "model": "C:\\Users\\sphri\\llm\\models\\qat-study\\E2B\\gemma-4-E2B-O8-q8_0.gguf"}
+{"time": "2026-10-31T01:11:03", "tag": "qat-study-acc-v1", "label": "E2B-O8", "event": "finished", "attempt": 1, "answered": 1400, "hours": 3.6683321432272593}
+{"time": "2026-10-31T01:11:03", "tag": "qat-study-acc-v1", "label": "E2B-Q", "event": "start", "attempt": 1, "answered": 0, "total": 1400, "model": "C:\\Users\\sphri\\llm\\models\\google__gemma-4-E2B-it-qat-q4_0-gguf\\gemma-4-E2B_q4_0-it.gguf"}
+{"time": "2026-10-31T06:11:13", "tag": "qat-study-acc-v1", "label": "E2B-Q", "event": "finished", "attempt": 1, "answered": 1400, "hours": 5.002592760589388}
+{"time": "2026-10-31T06:11:13", "tag": "qat-study-acc-v1", "label": "E2B-O4", "event": "start", "attempt": 1, "answered": 0, "total": 1400, "model": "C:\\Users\\sphri\\llm\\models\\qat-study\\E2B\\gemma-4-E2B-O4-q4_0.gguf"}
+{"time": "2026-10-31T11:11:25", "tag": "qat-study-acc-v1", "label": "E2B-O4", "event": "finished", "attempt": 1, "answered": 1400, "hours": 5.003346560796102}
+{"time": "2026-10-31T11:11:25", "tag": "qat-study-acc-v1", "label": "E2B-U8", "event": "start", "attempt": 1, "answered": 0, "total": 1400, "model": "C:\\Users\\sphri\\llm\\models\\qat-study\\E2B\\gemma-4-E2B-U8-q8_0.gguf"}
+{"time": "2026-10-31T11:12:54", "tag": "qat-study-acc-v1", "label": "E2B-U8", "event": "paused", "answered": 3, "total": 1400, "reason": "stopped at the owner's request; resume with: python tools/qat_study.py accuracy E2B"}

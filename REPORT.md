@@ -382,6 +382,12 @@ Before publishing I re-audited everything:
   4,096-token budget on the hardest chemistry and engineering questions. On the 199 questions
   both finished, the gap is 2.5 points (p = 0.30). This doesn't contradict Google's "similar
   quality to bfloat16" so much as quantify it on this test.
+- **A controlled follow-up on the smallest size, Gemma 4 E2B** (findings 70 and 72; method fixed
+  before any data in [`docs/QAT_STUDY_PROTOCOL.md`](docs/QAT_STUDY_PROTOCOL.md), 1,400 questions per
+  version): Google's 4-bit release scores 3.0 points below the original (p = 0.0077) and 4.0 points
+  above the original rounded to 4 bits the ordinary way (p = 0.0009). Here the gap holds on the
+  questions both finished, so it isn't the token budget. Most of the release's distance from the
+  original comes from the retraining, not the rounding (finding 70).
 - **Against published scores,** the measurements agree within the 95% margin of a 210-question
   sample:
   - Gemma 4 26B-A4B: 82.6 on Google's model card vs 83.8% here (Q8_0);
@@ -613,6 +619,9 @@ Full commands: lab notebook, "Recommended settings".
   - a faster first reply;
   - local memory the owner controls;
   - screen understanding.
+- **The QAT fidelity study at more sizes** ([protocol](docs/QAT_STUDY_PROTOCOL.md)): the last E2B
+  version (Google's QAT model before rounding, to show whether the retraining or the rounding costs
+  the 3 points), then E4B and 12B.
 - **Light models for heavy multitasking:** Gemma 4 E4B and 12B QAT, and Qwen3.5-9B, on the same
   210 questions.
 - **Upstream contributions:**

@@ -1945,6 +1945,45 @@ Goal: Sprout separate from Edge, quick and smooth.
       question now includes "Hey Sia": since wake mode became the default, a question without it is rightly ignored,
       so the old default could no longer pass), and a background line nearby still isn't answered.
 
+72. **QAT study, E2B accuracy: Google's 4-bit release recovers most of ordinary rounding's loss, but is still 3.0
+    points below the original** (tag `qat-study-acc-v1`; method fixed in advance in
+    [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md); `python tools/qat_study.py accuracy-report E2B`, which shows a
+    version only once all its questions are answered). Three of the four versions are complete; U8 is next.
+    - **Setup:** MMLU-Pro, 1,400 questions (100 per subject, seed 0), temperature 0, thinking off, at most 4,096
+      answer tokens, one request at a time (`-np 1`, bit-reproducible). O8 stands in for the original (O → O8 KLD
+      0.0029, finding 70). O8 ran in two sessions (782 answers, a pause at the owner's request, then the remaining
+      618); Q and O4 ran in one go of about 5 hours each. Every start, pause and finish is in
+      `results/qat_study_runs.jsonl`; no run was interrupted by a crash or a loss of mains power.
+
+      | Version | What it is | Accuracy | Cut off at 4,096 tokens | Median answer |
+      |---|---|---|---|---|
+      | O8 | the original, Q8_0 | **61.7%** | 6 | 736 tokens |
+      | Q | Google's Q4_0 QAT release | **58.7%** | 18 | 791 tokens |
+      | O4 | the original rounded to Q4_0 here, same per-tensor formats as Q | **54.7%** | 7 | 760 tokens |
+      | U8 | Google's QAT model before rounding, Q8_0 | not yet run (3 of 1,400 answered) | | |
+
+    - **Primary test, Q against O8: −3.0 points, 95% CI [−5.2, −0.8]; exact McNemar p = 0.0077** (O8 right and Q
+      wrong on 140 questions, the reverse on 98). On the 1,378 questions both finished: −3.0 points [−5.1, −0.8],
+      p = 0.0081, so cut-off answers don't explain it. The Holm correction across sizes is final only once the
+      other sizes are measured, but it can't push this result past 0.05: with at most five sizes, its adjusted p is
+      at most 5 × 0.0077 = 0.039.
+    - **Secondary (uncorrected), Q against O4: +4.0 points [+1.7, +6.3], p = 0.0009** (165 against 109); on the
+      1,377 both finished, +4.2 points, p = 0.0004. QAT beats ordinary rounding to the same format.
+    - **Descriptive, not a protocol test:** O4 against O8 is −7.0 points [−9.1, −4.9] (165 against 67). Of the 7
+      points that ordinary Q4_0 rounding costs E2B, Google's release avoids about 4 and keeps about 3.
+    - **The same direction as the 26B model** (finding 48: QAT −4.8 points on 210 questions, p = 0.041), now with a
+      sample large enough to detect a 3-point gap.
+    - **Lower perplexity didn't mean higher accuracy.** The QAT versions find the 26B model's answers far more
+      predictable than the original does (finding 70: 3.36 against 5.82), yet Q answers fewer questions correctly.
+      Whether the retraining or the final rounding costs the 3 points is what U8 against O8 will show.
+    - **Exploratory (not planned in the protocol):** Q is below O8 in 12 of 14 subjects, most in engineering (−7)
+      and history (−6), level in chemistry, +3 in "other"; no subject alone is significant (each has 100
+      questions). The loss is broad, not one weak area. Q's answers are longer (median 791 against 736 tokens).
+    - **Answer-reading check:** every finished O8 and O4 answer gave a letter. One finished Q answer ended
+      "Answer: 1" (scored wrong, as written). Five of Q's cut-off answers had a letter picked up from their
+      unfinished working; the finished-both analysis leaves them out and gives the same result.
+    - **Next:** U8 (about 6.5 hours), then the H3 secondary test U8 against O8; then E4B.
+
 ## Optimization candidates (each must be measured before it counts)
 
 | Candidate | Evidence / source | Mechanism on this laptop | Status |
@@ -2025,7 +2064,7 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | 9 | Publication: summary, limitations, reproduction guide, portable paths, pinned requirements, file hashes | **Done:** text, all 11 file hashes match Hugging Face, patches apply cleanly. Published on GitHub (MIT licence) |
 | 7 | **Daily-use RAM-pressure test**: `tools/ram_hold.py` holds 0 / 2 / 4 / 6 GiB and touches every page every 5 s, like active tabs; an untouched allocation could be trimmed to the pagefile and flatter the result. Floor: never below 2 GiB available. `tools/ram_pressure.ps1` then measures decode of gpt-oss-20b (mmap, and `-lm none` where preflight allows) and Gemma 4 QAT (mmap). Output: "with X GB used by other apps, expect Y tok/s" | **Done** (finding 40) |
 | — | **Optional extensions, after the core:** gpt-oss-120b at native precision from SSD; expert-prefetch contribution to llama.cpp; ik divergence report upstream | Deferred |
-| 10 | **QAT fidelity study:** for each Gemma 4 size, separate QAT's retraining drift from its 4-bit rounding loss, using Google's original, QAT-unquantized and QAT Q4_0 releases, with a post-hoc Q4_0 control. Protocol fixed in advance: [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md) | **E2B pilot done** (finding 70: KL comparisons). Next: E2B accuracy, then E4B and 12B |
+| 10 | **QAT fidelity study:** for each Gemma 4 size, separate QAT's retraining drift from its 4-bit rounding loss, using Google's original, QAT-unquantized and QAT Q4_0 releases, with a post-hoc Q4_0 control. Protocol fixed in advance: [QAT_STUDY_PROTOCOL.md](QAT_STUDY_PROTOCOL.md) | **E2B:** KL comparisons done (finding 70); accuracy for O8, Q and O4 done (finding 72: Q −3.0 points against O8, +4.0 against O4), U8 next. Then E4B and 12B |
 
 ## Tools
 
@@ -2035,6 +2074,7 @@ huge (37 GiB for Llama 3; Gemma's 262k vocab is larger), so limit `--chunks`.
 | `tools/preflight.py` | Pre-run fit check plus roofline from the GGUF header. Understands `-ngl`, `--n-cpu-moe`, `-ot`, mmap, and measured compute buffers. `--auto-moe` finds the smallest `--n-cpu-moe` that fits; `--top N` lists the largest tensors |
 | `tools/bench.py` | Sweeps. Placement from auto-fit (`llama-fit-params`, then pinned) or explicit `--n-cpu-moe`. Gated on llama.cpp-measured buffers plus a RAM margin; cool-down gate, `--rounds`, `--shuffle`; per-phase disk-read validity; logged to `results/runs.jsonl` |
 | `tools/report.py` | Table of all runs, re-scored with the current validity rule (`--tag`, `--md`) |
+| `tools/qat_study.py` | QAT fidelity study ([protocol](QAT_STUDY_PROTOCOL.md)): convert, quantize, hashes, `kld`, `compare-q`, `accuracy` (resumable MMLU-Pro runs, every start and pause in `results/qat_study_runs.jsonl`), `report` (KL table), `accuracy-report` (McNemar tests, paired 95% CI, Holm across sizes; a version appears only when complete) |
 | `tools/quality.py` | KL-divergence vs a reference (`base` saves the reference logits, `kld` compares), preflight-gated → `results/quality.jsonl` |
 | `tools/check_sysmem_fallback.py` | Verifies VRAM overcommit fails loudly (no silent spill) |
 | `tools/task_eval.py`, `tools/mmlupro_extend.ps1` | GSM8K / MMLU-Pro accuracy, flips and exact sign test (`--report`, comma list of tags); `--skip-from` extends a sample without redoing answered ids. `mmlupro_extend.ps1`: 70 → 210 questions (the 15-per-subject sample contains the 5-per-subject one, verified) |

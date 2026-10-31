@@ -62,7 +62,8 @@ mode; the full conditions and every raw number are in the [lab notebook](docs/LA
    scores 4.8 MMLU-Pro points below the near-lossless version (p = 0.041), a third of that
    from failing to finish hard questions. Its predictions differ from the original's as much
    as a 2-bit quantization's do. Because QAT is a re-trained model, not a compressed copy, only
-   task accuracy can judge it.
+   task accuracy can judge it. A controlled test on the smallest Gemma 4 (E2B, 1,400 questions per
+   version) agrees: −3.0 points (p = 0.0077), yet 4.0 points better than ordinary 4-bit rounding.
 3. **Speculative decoding depends on the model.** Gemma's own MTP head gives 1.32× at temperature 0
    (26.4 → 34.9 tok/s) and 1.25× at Google's recommended sampling (25.1 → 31.3 tok/s). gpt-oss's
    EAGLE-3 draft makes it 22% *slower*, because checking several tokens loads the union of
@@ -133,7 +134,7 @@ A one-click desktop app built on these results:
 |---|---|
 | [`REPORT.md`](REPORT.md) | The project report: goal, method, journey, results, problems and fixes |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed in each version |
-| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (71 findings) |
+| [`docs/LAB_NOTEBOOK.md`](docs/LAB_NOTEBOOK.md) | Every measurement, with run tags, sources and reproduction commands (72 findings) |
 | [`docs/SIA.md`](docs/SIA.md) | The app: features, architecture, security, install |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | The terms explained for students |
 | `tools/` | Preflight memory check and roofline, benchmark harness with validity rules, quality and accuracy evaluation, figure generator |
