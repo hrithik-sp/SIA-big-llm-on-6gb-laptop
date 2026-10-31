@@ -10,7 +10,8 @@ Q4_0 QAT release), O4 and U4 (O and U rounded to Q4_0 here, in exactly Q's per-t
   python tools/qat_study.py kld E2B           # the protocol's KL comparisons (tools/quality.py)
   python tools/qat_study.py compare-q E2B     # is Google's Q a plain Q4_0 rounding of U? (tensor bytes)
   python tools/qat_study.py accuracy E2B      # MMLU-Pro, 1,400 questions each for O8, Q, O4, U8 (resumable)
-  python tools/qat_study.py report E2B
+  python tools/qat_study.py report E2B            # KL table
+  python tools/qat_study.py accuracy-report E2B   # McNemar tests, complete versions only
 
 Downloads use tools/fetch_model.ps1 at the pinned revisions in SIZES. Every model run goes through the same
 preflight gate as tools/bench.py (inside tools/quality.py).
@@ -349,10 +350,77 @@ def cmd_report(a):
               f"{s.get('Same top p', float('nan')):>8.2f}% {f'{chk:.3f}' if chk else '-':>9}")
 
 
+PRIMARY = ("Q", "O8")  # candidate, reference (protocol, Analysis)
+SECONDARY = [("Q", "O4"), ("U8", "O8")]
+
+
+def paired(ref, cand, ids):
+    """Paired accuracy of cand against ref on the same questions: the exact McNemar (sign) test on the questions
+    where exactly one is right, and the paired difference with its Wald 95% interval (Agresti, Categorical Data
+    Analysis, sec. 10.1)."""
+    import math
+    import task_eval
+    n = len(ids)
+    lost = sum(ref[i]["correct"] and not cand[i]["correct"] for i in ids)  # ref right, cand wrong
+    gained = sum(not ref[i]["correct"] and cand[i]["correct"] for i in ids)
+    diff = (gained - lost) / n
+    half = 1.96 * math.sqrt(max(0.0, (lost + gained) - (gained - lost) ** 2 / n)) / n
+    return {"n": n, "ref_acc": sum(ref[i]["correct"] for i in ids) / n,
+            "cand_acc": sum(cand[i]["correct"] for i in ids) / n, "diff": diff, "ci": (diff - half, diff + half),
+            "lost": lost, "gained": gained, "p": task_eval.sign_test(lost, gained)}
+
+
+def holm(ps):
+    """Holm-Bonferroni adjusted p-values, in the input order."""
+    order = sorted(range(len(ps)), key=lambda i: ps[i])
+    adj, running = [0.0] * len(ps), 0.0
+    for rank, i in enumerate(order):
+        running = max(running, min(1.0, (len(ps) - rank) * ps[i]))
+        adj[i] = running
+    return adj
+
+
+def cmd_accuracy_report(a):
+    """The protocol's accuracy analysis. Per the stopping rule, a version appears only once all 1,400 of its
+    questions are answered; a version still running is reported by its count alone."""
+    import task_eval
+    ids = sorted(p[0] for p in task_eval.load_problems("mmlupro", 0, ACC_PER_CATEGORY, 0))
+    rows = {}
+    for r in task_eval.load_rows():
+        if r["tag"] == ACC_TAG:
+            rows.setdefault(r["label"], {})[r["idx"]] = r
+    complete = lambda size, code: all(i in rows.get(f"{size}-{code}", {}) for i in ids)
+    v = lambda size, code: rows[f"{size}-{code}"]
+    for code in ACC_ORDER:
+        d = rows.get(f"{a.size}-{code}", {})
+        if complete(a.size, code):
+            trunc = sum(d[i]["finish"] == "length" for i in ids)
+            print(f"{a.size}-{code:<3} {100 * sum(d[i]['correct'] for i in ids) / len(ids):5.1f}%  "
+                  f"cut off at 4,096 tokens: {trunc}")
+        else:
+            print(f"{a.size}-{code:<3} running: {sum(i in d for i in ids)}/{len(ids)} answered (not shown)")
+    # primary family: Q against O8 at every size whose pair is complete (Holm over the sizes complete so far)
+    sizes = [s for s in SIZES if complete(s, PRIMARY[0]) and complete(s, PRIMARY[1])]
+    prim = {s: paired(v(s, PRIMARY[1]), v(s, PRIMARY[0]), ids) for s in sizes}
+    adj = dict(zip(sizes, holm([prim[s]["p"] for s in sizes])))
+    pairs = [(PRIMARY, "primary")] + [(p, "secondary, uncorrected") for p in SECONDARY]
+    for (cand, ref), kind in pairs:
+        if not (complete(a.size, cand) and complete(a.size, ref)):
+            continue
+        for name, sel in (("all", ids), ("finished both", [i for i in ids if v(a.size, cand)[i]["finish"] == "stop"
+                                                           and v(a.size, ref)[i]["finish"] == "stop"])):
+            r = paired(v(a.size, ref), v(a.size, cand), sel)
+            extra = f"  Holm p={adj[a.size]:.4f} over {len(sizes)} size(s)" if kind == "primary" and name == "all" else ""
+            print(f"{cand} vs {ref} ({kind}; {name}, n={r['n']}): {100 * r['diff']:+.1f} points "
+                  f"[95% {100 * r['ci'][0]:+.1f}, {100 * r['ci'][1]:+.1f}]  {ref} right/{cand} wrong {r['lost']}, "
+                  f"{ref} wrong/{cand} right {r['gained']}, exact McNemar p={r['p']:.4f}{extra}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    ap.add_argument("command", choices=["convert", "quantize", "hashes", "kld", "compare-q", "accuracy", "report"])
+    ap.add_argument("command", choices=["convert", "quantize", "hashes", "kld", "compare-q", "accuracy", "report",
+                                        "accuracy-report"])
     ap.add_argument("size", choices=list(SIZES))
     ap.add_argument("--only", default="", help="kld: only these references (comma list of O, U, Q)")
     ap.add_argument("--cands", default="", help="kld: only these candidates (comma list)")
@@ -374,7 +442,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)
     {"convert": cmd_convert, "quantize": cmd_quantize, "hashes": cmd_hashes, "kld": cmd_kld,
-     "compare-q": cmd_compare_q, "accuracy": cmd_accuracy, "report": cmd_report}[a.command](a)
+     "compare-q": cmd_compare_q, "accuracy": cmd_accuracy, "report": cmd_report,
+     "accuracy-report": cmd_accuracy_report}[a.command](a)
     return 0
 
 

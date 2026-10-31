@@ -47,5 +47,28 @@ class Paths(unittest.TestCase):
         self.assertTrue(qs.gguf_path("E2B", "O4").endswith("gemma-4-E2B-O4-q4_0.gguf"))
 
 
+class AccuracyStats(unittest.TestCase):
+    def test_holm_matches_the_textbook_example(self):
+        # Holm (1979) step-down: sorted p 0.01, 0.04, 0.03 -> 0.03, 0.06, 0.06 (monotone), in input order
+        self.assertEqual([round(p, 6) for p in qs.holm([0.01, 0.04, 0.03])], [0.03, 0.06, 0.06])
+        self.assertEqual(qs.holm([0.4]), [0.4])
+        self.assertEqual(qs.holm([0.6, 0.7]), [1.0, 1.0])
+
+    def test_paired_counts_only_discordant_questions(self):
+        ref = {i: {"correct": c} for i, c in enumerate([True, True, True, False, False, True])}
+        cand = {i: {"correct": c} for i, c in enumerate([True, False, False, True, False, True])}
+        r = qs.paired(ref, cand, list(ref))
+        self.assertEqual((r["lost"], r["gained"]), (2, 1))
+        self.assertAlmostEqual(r["diff"], -1 / 6)
+        self.assertAlmostEqual(r["p"], 1.0)  # 2 against 1 is no evidence
+        self.assertLess(r["ci"][0], r["diff"])
+        self.assertGreater(r["ci"][1], r["diff"])
+
+    def test_identical_versions_differ_by_nothing(self):
+        d = {i: {"correct": i % 2 == 0} for i in range(10)}
+        r = qs.paired(d, d, list(d))
+        self.assertEqual((r["diff"], r["ci"], r["p"]), (0.0, (0.0, 0.0), 1.0))
+
+
 if __name__ == "__main__":
     unittest.main()
